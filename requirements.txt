@@ -1,0 +1,8 @@
+# Python dependencies for OpenFOAM Sloshing Simulation Manager
+numpy>=1.24.0
+scipy>=1.10.0
+matplotlib>=3.7.0
+pyvista>=0.43.0
+imageio>=2.33.0
+imageio-ffmpeg>=0.4.9
+h5py>=3.10.0

@@ -1,0 +1,45 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  13
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      functions;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+probes
+{
+    type            probes;
+    libs            ("libsampling.so");
+    writeControl   timeStep;
+    writeInterval  50;
+    probeLocations
+    (
+        (0 9.95 19.77)
+        (0 -9.95 19.77)
+    );
+    fixedLocations  false;
+    fields
+    (
+        p
+    );
+}
+
+maxU
+{
+    type            fieldMinMax;
+    libs            ("libfieldFunctionObjects.so");
+    writeControl    timeStep;
+    writeInterval   5;
+    fields          (U);
+    mode            magnitude;
+}
+
+// ************************************************************************* //
