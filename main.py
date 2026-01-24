@@ -31,9 +31,18 @@ def _import_pyvista():
 # --- Dependency Management ---
 def ensure_dependencies():
     """Check and install required Python packages with robust venv detection."""
+    # Building/running cases only needs the standard library. Allow skipping any
+    # venv/pip work (useful on HPC/login nodes) unless post-processing is used.
+    if os.environ.get("SLOSHING_SKIP_DEPS", "0").strip().lower() in ("1", "yes", "true", "on"):
+        return
+
     base_dir = os.path.dirname(os.path.abspath(__file__))
     venv_path = os.path.join(base_dir, "sloshing")
     restarted = os.environ.get("SLOSHING_ENV_RESTARTED") == "1"
+
+    # Allow users to opt out of venv auto-switching entirely.
+    if os.environ.get("SLOSHING_NO_VENV", "0").strip().lower() in ("1", "yes", "true", "on"):
+        return
 
     # Robust detection of whether we are running in the 'sloshing' venv
     in_venv = False
@@ -50,68 +59,59 @@ def ensure_dependencies():
                 in_venv = True
         except: pass
 
-    try:
-        import numpy
-        import scipy
-        import matplotlib
-        import imageio
-        import imageio_ffmpeg
-        import h5py
-        try:
-            _import_pyvista()  # Optional: used by interface extraction only
-        except Exception as e:
-            print(f"\n⚠️  PyVista not available: {e}")
-            print("   Interface extraction will be disabled until PyVista works.")
-        return # Success
-    except ImportError as e:
-        if in_venv or restarted:
-            print(f"\n❌ Error: Dependency '{e.name}' failed to load.")
-            print(f"   Executable: {sys.executable}")
-            print(f"   Venv Path:  {venv_path}")
-            
-            # Check for Mismatch: If Prefix doesn't match Venv, we are using the wrong Python
-            mismatch = False
-            try:
-                if not os.path.samefile(sys.prefix, venv_path):
-                    mismatch = True
-            except: mismatch = True
-            
-            if mismatch:
-                print("\n   ⚠️  VENV MISMATCH DETECTED!")
-                print("   The 'sloshing' folder was likely created with a different Python version.")
-                print("   Current active python is: " + sys.version.split()[0])
-            
-            print("\n   ACTION REQUIRED: Please delete the broken virtual environment and restart:")
-            print(f"   rm -rf {venv_path}")
-            sys.exit(1)
-
-        print(f"\n⚠️  Missing dependencies detected: {e}")
-        
-        if not os.path.exists(venv_path):
-            print(f"Creating virtual environment: {venv_path}")
-            subprocess.run([sys.executable, "-m", "venv", venv_path], check=True)
-            
-        # Get venv python/pip
-        if sys.platform == "win32":
-            pip_path = os.path.join(venv_path, "Scripts", "pip")
-            python_path = os.path.join(venv_path, "Scripts", "python")
-        else:
-            pip_path = os.path.join(venv_path, "bin", "pip")
+    # Get venv python/pip paths
+    if sys.platform == "win32":
+        pip_path = os.path.join(venv_path, "Scripts", "pip")
+        python_path = os.path.join(venv_path, "Scripts", "python")
+    else:
+        pip_path = os.path.join(venv_path, "bin", "pip")
+        python_path = os.path.join(venv_path, "bin", "python")
+        if not os.path.exists(python_path):
             python_path = os.path.join(venv_path, "bin", "python3")
-            if not os.path.exists(python_path):
-                python_path = os.path.join(venv_path, "bin", "python")
 
-        # Install/Verify
-        print("Installing/Verifying requirements...")
-        req_file = os.path.join(base_dir, "requirements.txt")
-        subprocess.run([pip_path, "install", "--upgrade", "pip"], check=False)
-        subprocess.run([pip_path, "install", "-r", req_file], check=True)
-        
-        print("\n✅ Dependencies verified.")
-        print(f"Restarting with virtual environment python...\n")
-        
+    # If a venv already exists, always jump into it immediately.
+    # This avoids the noisy "Missing numpy" path when the user runs `python main.py`
+    # with a system python that lacks the deps.
+    if not in_venv and os.path.exists(venv_path) and not restarted:
         os.environ["SLOSHING_ENV_RESTARTED"] = "1"
         os.execv(python_path, [python_path] + sys.argv)
+
+    # Ensure venv exists (if we're not in it yet, we will create then re-exec).
+    if not os.path.exists(venv_path):
+        print(f"Creating virtual environment: {venv_path}")
+        subprocess.run([sys.executable, "-m", "venv", venv_path], check=True)
+        os.environ["SLOSHING_ENV_RESTARTED"] = "1"
+        os.execv(python_path, [python_path] + sys.argv)
+
+    # We are inside the venv: verify packages without importing them (fast/quiet).
+    try:
+        import importlib.util
+
+        required = ["numpy", "scipy", "matplotlib", "imageio", "imageio_ffmpeg", "h5py"]
+        missing = [m for m in required if importlib.util.find_spec(m) is None]
+        if missing:
+            print(f"Installing python deps into {venv_path} (missing: {', '.join(missing)})...")
+            req_file = os.path.join(base_dir, "requirements.txt")
+            subprocess.run([pip_path, "install", "--upgrade", "pip", "-q"], check=False, capture_output=True)
+            res = subprocess.run([pip_path, "install", "-r", req_file, "-q"], capture_output=True)
+            if res.returncode != 0:
+                stderr = (res.stderr or b"").decode("utf-8", errors="ignore").strip().splitlines()
+                tail = "\n".join(stderr[-30:]) if stderr else "pip failed (no stderr)"
+                raise RuntimeError(tail)
+
+        # Optional: PyVista (may be unavailable on some systems)
+        if importlib.util.find_spec("pyvista") is None:
+            print("Note: PyVista not available; OpenFOAM interface extraction will be skipped.")
+        return
+    except Exception as e:
+        if in_venv or restarted:
+            print(f"\n❌ Python dependency setup failed: {e}")
+            print(f"   Executable: {sys.executable}")
+            print(f"   Venv Path:  {venv_path}")
+            print("\n   If this is a broken venv, delete it and rerun:")
+            print(f"   rm -rf {venv_path}")
+            sys.exit(1)
+        raise
     except Exception as e:
         print(f"\n❌ Unexpected error during dependency check: {e}")
         import traceback
@@ -124,6 +124,8 @@ ensure_dependencies()
 import math
 import itertools
 import re
+import json
+import tempfile
 
 # --- Constants & Defaults ---
 TEMPLATE_DIR = "circularTiltingTank"
@@ -134,7 +136,7 @@ DEFAULTS = {
     "mesh": 0.0005,
     "geo": "flat",
     "tilt_deg": 5.0,
-    "duration": 10.0,
+    "duration": 5.0,
     "dt": 0.1,
     "n_cpus": 1,
 }
@@ -233,16 +235,19 @@ def _write_functions_dict(case_dir, params):
     D = float(params.get("D", DEFAULTS["D"]))
     R = 0.5 * D
 
-    # Probe points inside the cylinder. We sample a few heights + a ring near the wall.
-    z_levels = [0.25 * H, 0.5 * H, 0.75 * H]
+    # Probe points inside the cylinder.
+    # Bias sampling around the expected interface height (~H/2) so we can detect
+    # interface stillness (alpha stops changing), not just small velocities.
     thetas = [0.0, 0.5 * math.pi, math.pi, 1.5 * math.pi]
     r_ring = 0.45 * R
 
     points = []
+    z_levels = [0.25 * H, 0.45 * H, 0.5 * H, 0.55 * H, 0.75 * H]
     for z in z_levels:
-        points.append((0.0, 0.0, z))
+        zc = min(max(z, 0.05 * H), 0.95 * H)
+        points.append((0.0, 0.0, zc))
         for th in thetas:
-            points.append((r_ring * math.cos(th), r_ring * math.sin(th), z))
+            points.append((r_ring * math.cos(th), r_ring * math.sin(th), zc))
 
     functions_path = os.path.join(case_dir, "system", "functions")
     content = [
@@ -272,6 +277,7 @@ def _write_functions_dict(case_dir, params):
         "    fields",
         "    (",
         "        U",
+        "        alpha.water",
         "    );",
         "    probeLocations",
         "    (",
@@ -293,6 +299,95 @@ def _write_functions_dict(case_dir, params):
 def _ensure_functions_dict(case_dir):
     params = parse_case_params(os.path.basename(case_dir))
     _write_functions_dict(case_dir, params)
+
+def _patch_control_dict_for_speed(case_dir, params):
+    control_path = os.path.join(case_dir, "system", "controlDict")
+    if not os.path.exists(control_path):
+        return
+    with open(control_path, "r") as f:
+        content = f.read()
+    # Aggressive time stepping to reduce wall-clock time.
+    # We only care about the steady-state end configuration.
+    content = re.sub(r'(^\s*maxCo\s+)[^;]+;', r'\g<1>50;', content, flags=re.M)
+    content = re.sub(r'(^\s*maxAlphaCo\s+)[^;]+;', r'\g<1>50;', content, flags=re.M)
+    # Allow dt to grow up to the requested "dt" (defaults to 0.1s now).
+    max_dt = float(params.get("dt", DEFAULTS["dt"]))
+    content = re.sub(r'(^\s*maxDeltaT\s+)[^;]+;', r'\g<1>' + f"{max_dt:g}" + ';', content, flags=re.M)
+    with open(control_path, "w") as f:
+        f.write(content)
+
+def _check_mesh_quality_gmsh(case_dir, msh_path, target_lc):
+    try:
+        from mesh_quality import analyze_msh2, write_summary
+    except Exception as e:
+        print(f"  ⚠️  Mesh quality check skipped (cannot import mesh_quality): {e}")
+        return {"ok": True, "summary": None}
+    if not os.path.exists(msh_path):
+        return {"ok": True, "summary": None}
+    summary = analyze_msh2(msh_path)
+    out_path = os.path.join(case_dir, "postProcessing", "mesh_quality.json")
+    write_summary(summary, out_path)
+
+    # Warn aggressively if tiny elements exist; they force tiny deltaT and huge runtime.
+    min_edge = summary.min_edge
+    if min_edge is None:
+        return {"ok": True, "summary": summary}
+    ratio = (min_edge / target_lc) if target_lc > 0 else 1.0
+    ok = True
+    if ratio < 0.3:
+        ok = False
+        print(
+            f"  ⚠️  Mesh warning: min edge {min_edge:.3g}m is {ratio:.2f}x target lc={target_lc:g}m; "
+            "expect very small deltaT and very slow runs."
+        )
+    if summary.max_aspect_ratio is not None and summary.max_aspect_ratio > 20:
+        ok = False
+        print(
+            f"  ⚠️  Mesh warning: max aspect ratio ~{summary.max_aspect_ratio:.1f} (high); "
+            "may hurt stability/time step."
+        )
+    # Also print element count to expose accidental over-refinement.
+    if summary.n_tets > 0:
+        print(f"  Mesh: {summary.n_tets:,} tetrahedra (nodes: {summary.n_nodes:,}).")
+    return {"ok": ok, "summary": summary}
+
+def _preflight_mesh_quality(params):
+    """Build a temporary Gmsh mesh and warn if it produces tiny elements."""
+    gmsh_path = shutil.which("gmsh")
+    if not gmsh_path:
+        print("Mesh preflight: gmsh not found; skipping mesh-quality check.")
+        return {"ok": True, "summary": None}
+    mesh_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), TEMPLATE_DIR, "generate_mesh.py")
+    if not os.path.exists(mesh_script):
+        return {"ok": True, "summary": None}
+    with tempfile.TemporaryDirectory(prefix="openfoam_meshcheck_") as tmpdir:
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    mesh_script,
+                    str(params["H"]),
+                    str(params["D"]),
+                    str(params["mesh"]),
+                    params["geo"],
+                ],
+                cwd=tmpdir,
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["gmsh", "-3", "cylinder.geo", "-format", "msh2", "-o", "cylinder.msh"],
+                cwd=tmpdir,
+                check=True,
+                capture_output=True,
+            )
+            return _check_mesh_quality_gmsh(".", os.path.join(tmpdir, "cylinder.msh"), float(params["mesh"]))
+        except subprocess.CalledProcessError as e:
+            msg = (e.stderr or b"").decode("utf-8", errors="ignore").strip()
+            print(f"Mesh preflight: failed ({msg[:200]})")
+        except Exception as e:
+            print(f"Mesh preflight: failed ({e})")
+    return {"ok": True, "summary": None}
 
 def get_case_name(params):
     """Generates a unique case folder name from parameters."""
@@ -446,6 +541,7 @@ def setup_case(params):
         subprocess.run([
             "gmsh", "-3", "cylinder.geo", "-format", "msh2", "-o", "cylinder.msh"
         ], cwd=cwd, check=True, capture_output=True)
+        _check_mesh_quality_gmsh(case_name, os.path.join(cwd, "cylinder.msh"), float(params["mesh"]))
     else:
         print("  ❌ gmsh not found in PATH. Cannot generate mesh.")
 
@@ -468,6 +564,7 @@ def setup_case(params):
         content = re.sub(r'deltaT\s+[\d.]+;', f'deltaT {params["dt"]};', content)
         with open(control_path, 'w') as f:
             f.write(content)
+    _patch_control_dict_for_speed(case_name, params)
         
     return case_name
 
@@ -475,6 +572,7 @@ def run_case_local(case_name, n_cpus=1):
     """Runs simulation locally."""
     _patch_alpha_water_bc(case_name)
     _ensure_functions_dict(case_name)
+    _patch_control_dict_for_speed(case_name, parse_case_params(case_name))
     # Check for existing progress
     has_progress = os.path.isdir(os.path.join(case_name, "processor0"))
     if not has_progress:
@@ -494,6 +592,7 @@ def run_case_oscar(case_name, params, is_oscar):
     """Submits job to Slurm on Oscar."""
     _patch_alpha_water_bc(case_name)
     _ensure_functions_dict(case_name)
+    _patch_control_dict_for_speed(case_name, params)
     mem, time_limit, n_cells, _ = estimate_resources(params)
     
     # Read the ACTUAL number of subdomains from the case folder
@@ -689,6 +788,14 @@ def menu_build_cases(is_oscar):
     print(f"Estimated Cells per Case: {int(n_cells):,}")
     print(f"Suggested Wall-Clock Time: {time_limit}")
     print(f"Suggested Parallelization: {suggested_cpus} CPUs")
+
+    # Preflight mesh quality to catch tiny elements that force deltaT ~ 1e-5.
+    mq = _preflight_mesh_quality(sample_params)
+    if mq and not mq.get("ok", True):
+        proceed = input("\n⚠️  Mesh quality looks risky for runtime/stability. Build anyway? (y/n): ").strip().lower()
+        if proceed != "y":
+            print("Cancelled.")
+            return
     
     if suggested_cpus > 1 and current_values['n_cpus'] == 1:
         print(f"\n💡 [RECOMMENDED] Multi-processing is highly recommended for this cell count.")

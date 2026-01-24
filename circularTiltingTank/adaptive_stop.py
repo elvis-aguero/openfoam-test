@@ -14,6 +14,7 @@ ADAPTIVE_DICT = os.path.join("system", "adaptiveStopDict")
 DEFAULT_CONFIG = {
     "enabled": True,
     "maxU": 1e-3,
+    "maxDeltaAlpha": 1e-4,
     "minTime": 1.0,
     "window": 1.0,
     "minSamples": 5,
@@ -71,8 +72,8 @@ def load_adaptive_config(path):
     return config
 
 
-def parse_samples(path):
-    samples = []
+def _parse_rows(path):
+    rows = []
     try:
         with open(path, "r") as handle:
             for line in handle:
@@ -81,27 +82,47 @@ def parse_samples(path):
                 values = [float(v) for v in FLOAT_RE.findall(line)]
                 if len(values) < 2:
                     continue
-                t = values[0]
-                data = values[1:]
-                max_u = 0.0
-                if len(data) >= 3 and len(data) % 3 == 0:
-                    for i in range(0, len(data), 3):
-                        ux, uy, uz = data[i], data[i + 1], data[i + 2]
-                        mag = (ux * ux + uy * uy + uz * uz) ** 0.5
-                        if mag > max_u:
-                            max_u = mag
-                else:
-                    # Fallback: treat as scalar series.
-                    max_u = max(data) if data else 0.0
-                samples.append((t, max_u))
+                rows.append((values[0], values[1:]))
     except FileNotFoundError:
-        return samples
+        return rows
     except Exception:
-        return samples
-    return samples
+        return rows
+    return rows
 
 
-def should_stop(samples, config):
+def _series_max_u(rows):
+    out = []
+    for t, data in rows:
+        max_u = 0.0
+        if len(data) >= 3:
+            n = (len(data) // 3) * 3
+            for i in range(0, n, 3):
+                ux, uy, uz = data[i], data[i + 1], data[i + 2]
+                mag = (ux * ux + uy * uy + uz * uz) ** 0.5
+                if mag > max_u:
+                    max_u = mag
+        out.append((t, max_u))
+    return out
+
+
+def _series_max_delta_scalar(rows):
+    out = []
+    prev = None
+    for t, data in rows:
+        if prev is None:
+            prev = data
+            continue
+        m = 0.0
+        for a, b in zip(data, prev):
+            d = abs(a - b)
+            if d > m:
+                m = d
+        out.append((t, m))
+        prev = data
+    return out
+
+
+def should_stop_metric(samples, config, threshold_key):
     if not samples:
         return False
     last_time = samples[-1][0]
@@ -116,8 +137,9 @@ def should_stop(samples, config):
     ]
     if len(window_samples) < min_samples:
         return False
-    for _, max_u in window_samples:
-        if max_u > float(config["maxU"]):
+    threshold = float(config.get(threshold_key, 0.0))
+    for _, value in window_samples:
+        if value > threshold:
             return False
     return True
 
@@ -154,7 +176,7 @@ def update_control_dict(stop_at=None, end_time=None):
     return changed
 
 
-def find_max_u_dat():
+def _find_probe_dat(field_name):
     search_roots = ["."]
     if os.path.isdir("processor0"):
         search_roots.append("processor0")
@@ -173,7 +195,7 @@ def find_max_u_dat():
         for root, _, files in os.walk(func_dir):
             for name in files:
                 # probes writes per-field files like ".../U"
-                if name == "U":
+                if name == field_name:
                     candidates.append(os.path.join(root, name))
         if not candidates:
             continue
@@ -240,22 +262,31 @@ def main():
     if not config.get("enabled", True):
         return subprocess.run(cmd).returncode
 
-    print("Adaptive stop enabled: watching max(U) for steady state.")
+    print("Adaptive stop enabled: watching max(|U|) and interface stillness (alpha.water).")
     proc = subprocess.Popen(cmd)
     stop_requested = False
 
     try:
         check_interval = max(0.2, float(config["checkInterval"]))
         while proc.poll() is None:
-            data_path = find_max_u_dat()
-            if data_path:
-                samples = parse_samples(data_path)
-                if not stop_requested and should_stop(samples, config):
-                    print(
-                        "Adaptive stop: steady state detected, requesting stop at next write."
-                    )
-                    update_control_dict(stop_at="writeNow")
-                    stop_requested = True
+            u_path = _find_probe_dat("U")
+            a_path = _find_probe_dat("alpha.water")
+
+            u_ok = False
+            a_ok = False
+            if u_path:
+                u_rows = _parse_rows(u_path)
+                u_samples = _series_max_u(u_rows)
+                u_ok = should_stop_metric(u_samples, config, "maxU")
+            if a_path:
+                a_rows = _parse_rows(a_path)
+                a_samples = _series_max_delta_scalar(a_rows)
+                a_ok = should_stop_metric(a_samples, config, "maxDeltaAlpha")
+
+            if not stop_requested and u_ok and a_ok:
+                print("Adaptive stop: steady state detected, requesting stop at next write.")
+                update_control_dict(stop_at="writeNow")
+                stop_requested = True
             time.sleep(check_interval)
     except KeyboardInterrupt:
         proc.send_signal(signal.SIGINT)

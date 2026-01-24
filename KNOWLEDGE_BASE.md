@@ -34,11 +34,18 @@ The tilted-tank case is implemented by rotating gravity in `constant/g` about th
 ### 2. Python-to-OpenFOAM Dictionary Generation
 When generating OpenFOAM dictionaries using Python `f-strings`, curly braces `{}` must be escaped (doubled) as `{{}}` to prevent Python from interpreting them as variable placeholders.
 
-### 4. Adaptive Stopping via max(U)
-Adaptive stopping is implemented by monitoring `max(|U|)` from a `probes` function object (sampling `U` at multiple points) and requesting a graceful stop when the sampled max stays below a threshold. The wrapper script `adaptive_stop.py` sets `stopAt writeNow` and then updates `endTime` to the final time after the run, so `runTimeModifiable yes` is required.
+### 4. Adaptive Stopping via max(U) + Interface Stillness
+Adaptive stopping is implemented by monitoring both:
+- `max(|U|)` from `probes` (field `U`)
+- Interface stillness from `probes` (field `alpha.water`) as `max(|delta alpha|)` between successive samples
+
+When both stay below thresholds for a sliding time window, `adaptive_stop.py` requests a graceful stop via `stopAt writeNow`, then rewrites `endTime` to the final time written. This relies only on `probes` (portable across OpenFOAM builds) and requires `runTimeModifiable yes`.
 
 ### 5. Alpha Contact Angle Compatibility
 Some OpenFOAM builds lack the `constantAlphaContactAngle` patch field. When available, the compatible `contactAngle` BC is used on `walls`, and `main.py` includes a patch step to replace unsupported contact-angle types in existing cases before running.
+
+### 6. Mesh Quality Preflight (Gmsh MSH2)
+Tiny elements (min edge length << target `lc`) can force extremely small adaptive `deltaT` (e.g., `1e-5`) and explode wall-clock time. The build menu runs a quick Gmsh preflight + MSH2 parser check and warns before generating cases if the mesh looks risky.
 
 ## 🏃 Current Workflow
 
@@ -62,7 +69,7 @@ Some OpenFOAM builds lack the `constantAlphaContactAngle` patch field. When avai
 - Tank: H=0.01m, D=0.0083m
 - Mesh: 0.0005m characteristic length
 - Tilt: 5.0 degrees about +X
-- Duration: 10s
+- Duration: 5s
 - Time step: 0.1s
 
 ## 🎯 Project Goals

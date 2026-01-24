@@ -21,6 +21,14 @@ Cylinder(v1) = {{0, 0, 0, 0, 0, H, R}};
 // Mesh Quality
 Mesh.CharacteristicLengthMin = lc;
 Mesh.CharacteristicLengthMax = lc;
+Mesh.MeshSizeMin = lc;
+Mesh.MeshSizeMax = lc;
+// Hard-disable automatic size variation that can create tiny elements.
+Mesh.MeshSizeFromPoints = 0;
+Mesh.MeshSizeFromCurvature = 0;
+Mesh.MeshSizeExtendFromBoundary = 0;
+Mesh.Optimize = 1;
+Mesh.OptimizeNetgen = 1;
 
 // Physical Groups
 eps = 1e-3;
@@ -78,6 +86,14 @@ v_fused[] = BooleanUnion{{ Volume{{v1}}; Delete; }}{{ Volume{{v2}}; Delete; }};
 // Mesh Quality
 Mesh.CharacteristicLengthMin = lc;
 Mesh.CharacteristicLengthMax = lc;
+Mesh.MeshSizeMin = lc;
+Mesh.MeshSizeMax = lc;
+// Hard-disable automatic size variation that can create tiny elements.
+Mesh.MeshSizeFromPoints = 0;
+Mesh.MeshSizeFromCurvature = 0;
+Mesh.MeshSizeExtendFromBoundary = 0;
+Mesh.Optimize = 1;
+Mesh.OptimizeNetgen = 1;
 
 eps = 1e-3;
 

@@ -27,12 +27,12 @@
 # ====================================================================================
 
 # Parameters
-H ?= 1.0
-D ?= 0.5
-MESH_SIZE ?= 0.05
+H ?= 0.01
+D ?= 0.0083
+MESH_SIZE ?= 0.0005
 TILT_DEG ?= 5.0
-DURATION ?= 10.0
-DT ?= 0.01
+DURATION ?= 5.0
+DT ?= 0.1
 GEO_TYPE ?= flat
 
 .PHONY: all mesh motion case run clean help
