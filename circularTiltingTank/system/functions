@@ -32,14 +32,26 @@ probes
     );
 }
 
-maxU
+magU
 {
-    type            fieldMinMax;
+    type            mag;
     libs            ("libfieldFunctionObjects.so");
+    field           U;
+    result          magU;
+    executeControl  timeStep;
+    executeInterval 1;
     writeControl    timeStep;
     writeInterval   5;
-    fields          (U);
-    mode            magnitude;
+}
+
+maxMagU
+{
+    type            volFieldValue;
+    libs            ("libfieldFunctionObjects.so");
+    operation       max;
+    fields          (magU);
+    writeControl    timeStep;
+    writeInterval   5;
 }
 
 // ************************************************************************* //

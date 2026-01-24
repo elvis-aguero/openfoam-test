@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 
-FUNC_NAME = "maxU"
+FUNC_NAME = "maxMagU"
 CONTROL_DICT = os.path.join("system", "controlDict")
 ADAPTIVE_DICT = os.path.join("system", "adaptiveStopDict")
 
@@ -165,7 +165,8 @@ def find_max_u_dat():
         if not candidates:
             continue
         for path in candidates:
-            if "fieldMinMax" in os.path.basename(path):
+            base_name = os.path.basename(path)
+            if "volFieldValue" in base_name or "maxMagU" in base_name:
                 return path
         return candidates[0]
     return None

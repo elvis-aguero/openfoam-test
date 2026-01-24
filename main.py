@@ -224,6 +224,47 @@ def _patch_alpha_water_bc(case_dir):
     with open(path, "w") as f:
         f.write("".join(out))
 
+def _patch_functions_maxu(case_dir):
+    path = os.path.join(case_dir, "system", "functions")
+    if not os.path.exists(path):
+        return
+    with open(path, "r") as f:
+        content = f.read()
+    if "fieldMinMax" not in content:
+        return
+    new_block = (
+        "magU\n"
+        "{\n"
+        "    type            mag;\n"
+        "    libs            (\"libfieldFunctionObjects.so\");\n"
+        "    field           U;\n"
+        "    result          magU;\n"
+        "    executeControl  timeStep;\n"
+        "    executeInterval 1;\n"
+        "    writeControl    timeStep;\n"
+        "    writeInterval   5;\n"
+        "}\n"
+        "\n"
+        "maxMagU\n"
+        "{\n"
+        "    type            volFieldValue;\n"
+        "    libs            (\"libfieldFunctionObjects.so\");\n"
+        "    operation       max;\n"
+        "    fields          (magU);\n"
+        "    writeControl    timeStep;\n"
+        "    writeInterval   5;\n"
+        "}\n"
+    )
+    pattern = r"\n\s*\w+\s*\{[^{}]*fieldMinMax[^{}]*\}\n"
+    updated, count = re.subn(pattern, "\n" + new_block + "\n", content, flags=re.S)
+    if count == 0:
+        if "// ************************************************************************* //" in content:
+            updated = content.replace("// ************************************************************************* //", new_block + "\n// ************************************************************************* //")
+        else:
+            updated = content + "\n" + new_block
+    with open(path, "w") as f:
+        f.write(updated)
+
 def get_case_name(params):
     """Generates a unique case folder name from parameters."""
     return (
@@ -350,6 +391,7 @@ def setup_case(params):
             os.chmod(os.path.join(root, f), 0o666)
 
     _patch_alpha_water_bc(case_name)
+    _patch_functions_maxu(case_name)
 
     cwd = os.path.join(os.getcwd(), case_name)
     
@@ -402,6 +444,7 @@ def setup_case(params):
 def run_case_local(case_name, n_cpus=1):
     """Runs simulation locally."""
     _patch_alpha_water_bc(case_name)
+    _patch_functions_maxu(case_name)
     # Check for existing progress
     has_progress = os.path.isdir(os.path.join(case_name, "processor0"))
     if not has_progress:
@@ -420,6 +463,7 @@ def run_case_local(case_name, n_cpus=1):
 def run_case_oscar(case_name, params, is_oscar):
     """Submits job to Slurm on Oscar."""
     _patch_alpha_water_bc(case_name)
+    _patch_functions_maxu(case_name)
     mem, time_limit, n_cells, _ = estimate_resources(params)
     
     # Read the ACTUAL number of subdomains from the case folder

@@ -35,7 +35,10 @@ The tilted-tank case is implemented by rotating gravity in `constant/g` about th
 When generating OpenFOAM dictionaries using Python `f-strings`, curly braces `{}` must be escaped (doubled) as `{{}}` to prevent Python from interpreting them as variable placeholders.
 
 ### 4. Adaptive Stopping via max(U)
-Adaptive stopping is implemented by monitoring `max(U)` from a `fieldMinMax` function object (`system/functions`) and requesting a graceful stop when `max(U)` stays below a threshold. The wrapper script `adaptive_stop.py` sets `stopAt writeNow` and then updates `endTime` to the final time after the run, so `runTimeModifiable yes` is required.
+Adaptive stopping is implemented by monitoring `max(|U|)` from a `mag` + `volFieldValue` function object (`system/functions`) and requesting a graceful stop when `max(|U|)` stays below a threshold. The wrapper script `adaptive_stop.py` sets `stopAt writeNow` and then updates `endTime` to the final time after the run, so `runTimeModifiable yes` is required.
+
+### 6. Function Object Availability (fieldMinMax)
+Some builds do not provide the `fieldMinMax` function object. Use `mag` + `volFieldValue (operation max)` instead to track `max(|U|)`, and patch existing cases accordingly.
 
 ### 5. Alpha Contact Angle Compatibility
 Some OpenFOAM builds lack the `constantAlphaContactAngle` patch field. When available, the compatible `contactAngle` BC is used on `walls`, and `main.py` includes a patch step to replace unsupported contact-angle types in existing cases before running.
