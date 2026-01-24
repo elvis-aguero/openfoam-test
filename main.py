@@ -224,26 +224,75 @@ def _patch_alpha_water_bc(case_dir):
     with open(path, "w") as f:
         f.write("".join(out))
 
-def _patch_functions_maxu(case_dir):
-    case_path = os.path.join(case_dir, "system", "functions")
-    if not os.path.exists(case_path):
-        return
-    template_path = os.path.join(TEMPLATE_DIR, "system", "functions")
-    if not os.path.exists(template_path):
-        return
+def _write_functions_dict(case_dir, params):
+    """
+    Writes a minimal, portable functionObjects file.
+    We only rely on `probes` (widely available) to avoid per-version syntax issues.
+    """
+    H = float(params.get("H", DEFAULTS["H"]))
+    D = float(params.get("D", DEFAULTS["D"]))
+    R = 0.5 * D
 
-    with open(case_path, "r") as f:
-        case_content = f.read()
+    # Probe points inside the cylinder. We sample a few heights + a ring near the wall.
+    z_levels = [0.25 * H, 0.5 * H, 0.75 * H]
+    thetas = [0.0, 0.5 * math.pi, math.pi, 1.5 * math.pi]
+    r_ring = 0.45 * R
 
-    # Replace legacy/unsupported function objects (e.g., fieldMinMax) and ensure
-    # required keys exist (some builds require writeFields for volFieldValue).
-    maxmag_block = re.search(r"(?s)\bmaxMagU\b\s*\{.*?\n\}", case_content)
-    has_writefields_in_maxmag = bool(maxmag_block and ("writeFields" in maxmag_block.group(0)))
-    needs_update = ("fieldMinMax" in case_content) or (not maxmag_block) or (not has_writefields_in_maxmag)
-    if not needs_update:
-        return
+    points = []
+    for z in z_levels:
+        points.append((0.0, 0.0, z))
+        for th in thetas:
+            points.append((r_ring * math.cos(th), r_ring * math.sin(th), z))
 
-    shutil.copyfile(template_path, case_path)
+    functions_path = os.path.join(case_dir, "system", "functions")
+    content = [
+        "/*--------------------------------*- C++ -*----------------------------------*\\",
+        "  =========                 |",
+        "  \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox",
+        "   \\\\    /   O peration     | Website:  https://openfoam.org",
+        "    \\\\  /    A nd           | Version:  13",
+        "     \\\\/     M anipulation  |",
+        "\\*---------------------------------------------------------------------------*/",
+        "FoamFile",
+        "{",
+        "    format      ascii;",
+        "    class       dictionary;",
+        "    location    \"system\";",
+        "    object      functions;",
+        "}",
+        "// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //",
+        "",
+        "probesU",
+        "{",
+        "    type            probes;",
+        "    libs            (\"libsampling.so\");",
+        "    writeControl    timeStep;",
+        "    writeInterval   5;",
+        "    fixedLocations  true;",
+        "    fields",
+        "    (",
+        "        U",
+        "    );",
+        "    probeLocations",
+        "    (",
+    ]
+    for x, y, z in points:
+        content.append(f"        ({x:.8g} {y:.8g} {z:.8g})")
+    content += [
+        "    );",
+        "}",
+        "",
+        "// ************************************************************************* //",
+        "",
+    ]
+
+    os.makedirs(os.path.join(case_dir, "system"), exist_ok=True)
+    with open(functions_path, "w") as f:
+        f.write("\n".join(content))
+
+def _ensure_functions_dict(case_dir):
+    params = parse_case_params(os.path.basename(case_dir))
+    _write_functions_dict(case_dir, params)
 
 def get_case_name(params):
     """Generates a unique case folder name from parameters."""
@@ -371,7 +420,7 @@ def setup_case(params):
             os.chmod(os.path.join(root, f), 0o666)
 
     _patch_alpha_water_bc(case_name)
-    _patch_functions_maxu(case_name)
+    _ensure_functions_dict(case_name)
 
     cwd = os.path.join(os.getcwd(), case_name)
     
@@ -416,6 +465,7 @@ def setup_case(params):
         with open(control_path, 'r') as f:
             content = f.read()
         content = re.sub(r'endTime\s+[\d.]+;', f'endTime {params["duration"]};', content)
+        content = re.sub(r'deltaT\s+[\d.]+;', f'deltaT {params["dt"]};', content)
         with open(control_path, 'w') as f:
             f.write(content)
         
@@ -424,7 +474,7 @@ def setup_case(params):
 def run_case_local(case_name, n_cpus=1):
     """Runs simulation locally."""
     _patch_alpha_water_bc(case_name)
-    _patch_functions_maxu(case_name)
+    _ensure_functions_dict(case_name)
     # Check for existing progress
     has_progress = os.path.isdir(os.path.join(case_name, "processor0"))
     if not has_progress:
@@ -443,7 +493,7 @@ def run_case_local(case_name, n_cpus=1):
 def run_case_oscar(case_name, params, is_oscar):
     """Submits job to Slurm on Oscar."""
     _patch_alpha_water_bc(case_name)
-    _patch_functions_maxu(case_name)
+    _ensure_functions_dict(case_name)
     mem, time_limit, n_cells, _ = estimate_resources(params)
     
     # Read the ACTUAL number of subdomains from the case folder

@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 
-FUNC_NAME = "maxMagU"
+FUNC_NAME = "probesU"
 CONTROL_DICT = os.path.join("system", "controlDict")
 ADAPTIVE_DICT = os.path.join("system", "adaptiveStopDict")
 
@@ -81,7 +81,19 @@ def parse_samples(path):
                 values = [float(v) for v in FLOAT_RE.findall(line)]
                 if len(values) < 2:
                     continue
-                samples.append((values[0], values[-1]))
+                t = values[0]
+                data = values[1:]
+                max_u = 0.0
+                if len(data) >= 3 and len(data) % 3 == 0:
+                    for i in range(0, len(data), 3):
+                        ux, uy, uz = data[i], data[i + 1], data[i + 2]
+                        mag = (ux * ux + uy * uy + uz * uz) ** 0.5
+                        if mag > max_u:
+                            max_u = mag
+                else:
+                    # Fallback: treat as scalar series.
+                    max_u = max(data) if data else 0.0
+                samples.append((t, max_u))
     except FileNotFoundError:
         return samples
     except Exception:
@@ -160,14 +172,12 @@ def find_max_u_dat():
         candidates = []
         for root, _, files in os.walk(func_dir):
             for name in files:
-                if name.endswith(".dat"):
+                # probes writes per-field files like ".../U"
+                if name == "U":
                     candidates.append(os.path.join(root, name))
         if not candidates:
             continue
-        for path in candidates:
-            base_name = os.path.basename(path)
-            if "volFieldValue" in base_name or "maxMagU" in base_name:
-                return path
+        candidates.sort(key=lambda p: os.path.getmtime(p), reverse=True)
         return candidates[0]
     return None
 

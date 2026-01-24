@@ -14,49 +14,35 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-probes
+probesU
 {
     type            probes;
     libs            ("libsampling.so");
-    writeControl   timeStep;
-    writeInterval  50;
-    probeLocations
-    (
-        (0 9.95 19.77)
-        (0 -9.95 19.77)
-    );
-    fixedLocations  false;
+    writeControl    timeStep;
+    writeInterval   5;
+    fixedLocations  true;
     fields
     (
-        p
+        U
     );
-}
-
-magU
-{
-    type            mag;
-    libs            ("libfieldFunctionObjects.so");
-    field           U;
-    result          magU;
-    writeFields     yes;
-    executeControl  timeStep;
-    executeInterval 1;
-    writeControl    timeStep;
-    writeInterval   5;
-}
-
-maxMagU
-{
-    type            volFieldValue;
-    libs            ("libfieldFunctionObjects.so");
-    regionType      all;
-    name            all;
-    operation       max;
-    fields          (magU);
-    writeFields     no;
-    log             yes;
-    writeControl    timeStep;
-    writeInterval   5;
+    probeLocations
+    (
+        (0 0 0.0025)
+        (0.0018675 0 0.0025)
+        (0 0.0018675 0.0025)
+        (-0.0018675 0 0.0025)
+        (0 -0.0018675 0.0025)
+        (0 0 0.005)
+        (0.0018675 0 0.005)
+        (0 0.0018675 0.005)
+        (-0.0018675 0 0.005)
+        (0 -0.0018675 0.005)
+        (0 0 0.0075)
+        (0.0018675 0 0.0075)
+        (0 0.0018675 0.0075)
+        (-0.0018675 0 0.0075)
+        (0 -0.0018675 0.0075)
+    );
 }
 
 // ************************************************************************* //
