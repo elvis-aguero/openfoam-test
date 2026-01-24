@@ -306,9 +306,9 @@ def _patch_control_dict_for_speed(case_dir, params):
         return
     with open(control_path, "r") as f:
         content = f.read()
-    # Conservative, stability-first time stepping for VOF.
-    content = re.sub(r'(^\s*maxCo\s+)[^;]+;', r'\g<1>0.5;', content, flags=re.M)
-    content = re.sub(r'(^\s*maxAlphaCo\s+)[^;]+;', r'\g<1>0.25;', content, flags=re.M)
+    # Moderate, stability-first time stepping for VOF.
+    content = re.sub(r'(^\s*maxCo\s+)[^;]+;', r'\g<1>1.0;', content, flags=re.M)
+    content = re.sub(r'(^\s*maxAlphaCo\s+)[^;]+;', r'\g<1>0.5;', content, flags=re.M)
 
     # `dt` is treated as the maximum allowed timestep (maxDeltaT).
     max_dt = float(params.get("dt", DEFAULTS["dt"]))
@@ -676,10 +676,16 @@ def run_case_local(case_name, n_cpus=1):
             
     if has_progress:
         print(f"  🏃 Resuming {case_name} (CPUs={n_cpus})...")
-        subprocess.run(["make", "-C", case_name, "resume", f"N_CPUS={n_cpus}"], check=True)
+        subprocess.run(
+            ["make", "-C", case_name, "resume", f"N_CPUS={n_cpus}", "ADAPTIVE_STOP=1"],
+            check=True,
+        )
     else:
         print(f"  🏃 Running {case_name} (CPUs={n_cpus})...")
-        subprocess.run(["make", "-C", case_name, "run", f"N_CPUS={n_cpus}"], check=True)
+        subprocess.run(
+            ["make", "-C", case_name, "run", f"N_CPUS={n_cpus}", "ADAPTIVE_STOP=1"],
+            check=True,
+        )
 
 def run_case_oscar(case_name, params, is_oscar):
     """Submits job to Slurm on Oscar."""
@@ -726,10 +732,10 @@ def run_case_oscar(case_name, params, is_oscar):
         f"cd {case_name}",
         "if [ -d 'processor0' ] || (ls -d [0-9]* 2>/dev/null | grep -v '^0$' | grep -q .) ; then",
         "    echo 'Found existing progress. Resuming simulation...'",
-        f"    make resume OSCAR=1 N_CPUS={n_cpus}",
+        f"    make resume OSCAR=1 N_CPUS={n_cpus} ADAPTIVE_STOP=1",
         "else",
         "    echo 'Starting fresh simulation...'",
-        f"    make run OSCAR=1 N_CPUS={n_cpus}",
+        f"    make run OSCAR=1 N_CPUS={n_cpus} ADAPTIVE_STOP=1",
         "fi",
         "echo 'End: $(date)'"
     ]

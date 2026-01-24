@@ -19,6 +19,7 @@ DEFAULT_CONFIG = {
     "window": 1.0,
     "minSamples": 5,
     "checkInterval": 2.0,
+    "logInterval": 30.0,
 }
 
 FLOAT_RE = re.compile(r"[-+]?(?:\d*\.\d+|\d+)(?:[eE][-+]?\d+)?")
@@ -265,28 +266,50 @@ def main():
     print("Adaptive stop enabled: watching max(|U|) and interface stillness (alpha.water).")
     proc = subprocess.Popen(cmd)
     stop_requested = False
+    last_log = 0.0
 
     try:
         check_interval = max(0.2, float(config["checkInterval"]))
+        log_interval = max(1.0, float(config.get("logInterval", 30.0)))
         while proc.poll() is None:
             u_path = _find_probe_dat("U")
             a_path = _find_probe_dat("alpha.water")
 
             u_ok = False
             a_ok = False
+            latest_t = None
+            latest_u = None
+            latest_da = None
             if u_path:
                 u_rows = _parse_rows(u_path)
                 u_samples = _series_max_u(u_rows)
                 u_ok = should_stop_metric(u_samples, config, "maxU")
+                if u_samples:
+                    latest_t = u_samples[-1][0]
+                    latest_u = u_samples[-1][1]
             if a_path:
                 a_rows = _parse_rows(a_path)
                 a_samples = _series_max_delta_scalar(a_rows)
                 a_ok = should_stop_metric(a_samples, config, "maxDeltaAlpha")
+                if a_samples:
+                    latest_da = a_samples[-1][1]
+                    if latest_t is None:
+                        latest_t = a_samples[-1][0]
 
             if not stop_requested and u_ok and a_ok:
                 print("Adaptive stop: steady state detected, requesting stop at next write.")
                 update_control_dict(stop_at="writeNow")
                 stop_requested = True
+
+            now = time.time()
+            if latest_u is not None and (now - last_log) >= log_interval:
+                if latest_da is None:
+                    da_str = "n/a"
+                else:
+                    da_str = f"{latest_da:.3g}"
+                t_str = f"{latest_t:.6g}" if latest_t is not None else "n/a"
+                print(f"[adaptive_stop] t={t_str} maxU={latest_u:.3g} maxDeltaAlpha={da_str}", flush=True)
+                last_log = now
             time.sleep(check_interval)
     except KeyboardInterrupt:
         proc.send_signal(signal.SIGINT)

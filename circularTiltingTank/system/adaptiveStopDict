@@ -23,6 +23,7 @@ adaptiveStop
     window          0.5;
     minSamples      3;
     checkInterval   0.5;
+    logInterval     30;
 }
 
 // ************************************************************************* //
