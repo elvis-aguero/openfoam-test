@@ -163,6 +163,15 @@ def parse_indices(s, max_idx):
                 indices.add(i - 1)
     return sorted(list(indices))
 
+def format_time(hours):
+    """Formats hours as an HH:MM:SS Slurm time string."""
+    if hours is None:
+        return "00:00:00"
+    total_minutes = int(math.ceil(max(hours, 0.0) * 60.0))
+    h = total_minutes // 60
+    m = total_minutes % 60
+    return f"{h:02d}:{m:02d}:00"
+
 def get_case_name(params):
     """Generates a unique case folder name from parameters."""
     return (
