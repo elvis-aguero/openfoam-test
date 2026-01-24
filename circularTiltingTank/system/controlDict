@@ -24,7 +24,9 @@ stopAt          endTime;
 
 endTime         5;
 
-deltaT          0.1;
+// Start with a conservative dt to avoid blowing up on the first step.
+// `maxDeltaT` still caps the growth (set via the manager's dt parameter).
+deltaT          0.001;
 
 writeControl    adjustableRunTime;
 

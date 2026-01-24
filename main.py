@@ -313,6 +313,9 @@ def _patch_control_dict_for_speed(case_dir, params):
     # Allow dt to grow up to the requested "dt" (defaults to 0.1s now).
     max_dt = float(params.get("dt", DEFAULTS["dt"]))
     content = re.sub(r'(^\s*maxDeltaT\s+)[^;]+;', r'\g<1>' + f"{max_dt:g}" + ';', content, flags=re.M)
+    # Keep the very first step conservative to avoid immediate blow-ups when gravity is applied.
+    dt0 = min(max_dt, 1e-3)
+    content = re.sub(r'(^\s*deltaT\s+)[^;]+;', r'\g<1>' + f"{dt0:g}" + ';', content, flags=re.M)
     with open(control_path, "w") as f:
         f.write(content)
 
@@ -335,6 +338,13 @@ def _patch_fvsolution_prefpoint(case_dir, params):
         r'(^\s*pRefPoint\s*)\([^)]*\)\s*;',
         r'\g<1>' + f"(0 0 {z:.6g});",
         content,
+        flags=re.M,
+    )
+    # Match p_rgh atmosphere p0=0 (gauge) to avoid artificial driving pressure.
+    content2 = re.sub(
+        r'(^\s*pRefValue\s+)[^;]+;',
+        r'\g<1>0;',
+        content2,
         flags=re.M,
     )
     if content2 != content:
@@ -587,7 +597,10 @@ def setup_case(params):
         with open(control_path, 'r') as f:
             content = f.read()
         content = re.sub(r'endTime\s+[\d.]+;', f'endTime {params["duration"]};', content)
-        content = re.sub(r'deltaT\s+[\d.]+;', f'deltaT {params["dt"]};', content)
+        # Use dt as the maximum dt target; start smaller to keep the first step stable.
+        dt_max = float(params["dt"])
+        dt0 = min(dt_max, 1e-3)
+        content = re.sub(r'deltaT\s+[\d.]+;', f'deltaT {dt0};', content)
         with open(control_path, 'w') as f:
             f.write(content)
     _patch_control_dict_for_speed(case_name, params)

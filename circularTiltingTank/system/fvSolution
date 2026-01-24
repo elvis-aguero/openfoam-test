@@ -84,7 +84,9 @@ PIMPLE
 
     // Must be inside the domain; `main.py` also patches this per-case based on H.
     pRefPoint       (0 0 0.005);
-    pRefValue       1e5;
+    // Use a reference consistent with the atmosphere BC (p0=0) to avoid
+    // imposing an artificial pressure offset.
+    pRefValue       0;
 }
 
 relaxationFactors
