@@ -1,0 +1,29 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 159983
+##  Job Name : post_compare_case_H0.01_D0.0083_flat_tilt_T5.0_d5.0_m0.0005
+##  Nodelist : node2333
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Sat Jan 24 03:50:58 PM EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: compare | Case: case_H0.01_D0.0083_flat_tilt_T5.0_d5.0_m0.0005
+Date: $(date)
+Python: $(which python)
+  📊 Comparing analytical and OpenFOAM interfaces for ....
+Traceback (most recent call last):
+  File "/oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/case_H0.01_D0.0083_flat_tilt_T5.0_d5.0_m0.0005/../main.py", line 1632, in <module>
+    compare_interfaces(args.case)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/case_H0.01_D0.0083_flat_tilt_T5.0_d5.0_m0.0005/../main.py", line 1455, in compare_interfaces
+    analytic_pts, area, hL = _extract_analytical_interface(case_dir, results_dir)
+                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/case_H0.01_D0.0083_flat_tilt_T5.0_d5.0_m0.0005/../main.py", line 1379, in _extract_analytical_interface
+    thetac_deg = _read_contact_angle(os.path.join(case_dir, "0", "alpha.water"))
+  File "/oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/case_H0.01_D0.0083_flat_tilt_T5.0_d5.0_m0.0005/../main.py", line 1300, in _read_contact_angle
+    return _read_scalar_value(path, "theta0", 90.0)
+  File "/oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/case_H0.01_D0.0083_flat_tilt_T5.0_d5.0_m0.0005/../main.py", line 1274, in _read_scalar_value
+    content = f.read()
+  File "<frozen codecs>", line 325, in decode
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xf0 in position 675: invalid continuation byte
