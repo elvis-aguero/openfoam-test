@@ -225,45 +225,25 @@ def _patch_alpha_water_bc(case_dir):
         f.write("".join(out))
 
 def _patch_functions_maxu(case_dir):
-    path = os.path.join(case_dir, "system", "functions")
-    if not os.path.exists(path):
+    case_path = os.path.join(case_dir, "system", "functions")
+    if not os.path.exists(case_path):
         return
-    with open(path, "r") as f:
-        content = f.read()
-    if "fieldMinMax" not in content:
+    template_path = os.path.join(TEMPLATE_DIR, "system", "functions")
+    if not os.path.exists(template_path):
         return
-    new_block = (
-        "magU\n"
-        "{\n"
-        "    type            mag;\n"
-        "    libs            (\"libfieldFunctionObjects.so\");\n"
-        "    field           U;\n"
-        "    result          magU;\n"
-        "    executeControl  timeStep;\n"
-        "    executeInterval 1;\n"
-        "    writeControl    timeStep;\n"
-        "    writeInterval   5;\n"
-        "}\n"
-        "\n"
-        "maxMagU\n"
-        "{\n"
-        "    type            volFieldValue;\n"
-        "    libs            (\"libfieldFunctionObjects.so\");\n"
-        "    operation       max;\n"
-        "    fields          (magU);\n"
-        "    writeControl    timeStep;\n"
-        "    writeInterval   5;\n"
-        "}\n"
-    )
-    pattern = r"\n\s*\w+\s*\{[^{}]*fieldMinMax[^{}]*\}\n"
-    updated, count = re.subn(pattern, "\n" + new_block + "\n", content, flags=re.S)
-    if count == 0:
-        if "// ************************************************************************* //" in content:
-            updated = content.replace("// ************************************************************************* //", new_block + "\n// ************************************************************************* //")
-        else:
-            updated = content + "\n" + new_block
-    with open(path, "w") as f:
-        f.write(updated)
+
+    with open(case_path, "r") as f:
+        case_content = f.read()
+
+    # Replace legacy/unsupported function objects (e.g., fieldMinMax) and ensure
+    # required keys exist (some builds require writeFields for volFieldValue).
+    maxmag_block = re.search(r"(?s)\bmaxMagU\b\s*\{.*?\n\}", case_content)
+    has_writefields_in_maxmag = bool(maxmag_block and ("writeFields" in maxmag_block.group(0)))
+    needs_update = ("fieldMinMax" in case_content) or (not maxmag_block) or (not has_writefields_in_maxmag)
+    if not needs_update:
+        return
+
+    shutil.copyfile(template_path, case_path)
 
 def get_case_name(params):
     """Generates a unique case folder name from parameters."""
