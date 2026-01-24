@@ -5,6 +5,29 @@ import shutil
 import subprocess
 import argparse
 
+def _patch_vtk_for_pyvista():
+    try:
+        import vtkmodules.vtkFiltersSources as vfs
+    except Exception:
+        return
+    if hasattr(vfs, "vtkCapsuleSource"):
+        return
+    try:
+        class vtkCapsuleSource(vfs.vtkSphereSource):
+            pass
+        vfs.vtkCapsuleSource = vtkCapsuleSource
+    except Exception:
+        pass
+
+def _import_pyvista():
+    try:
+        import pyvista as pv
+        return pv
+    except Exception:
+        _patch_vtk_for_pyvista()
+        import pyvista as pv
+        return pv
+
 # --- Dependency Management ---
 def ensure_dependencies():
     """Check and install required Python packages with robust venv detection."""
@@ -35,7 +58,7 @@ def ensure_dependencies():
         import imageio_ffmpeg
         import h5py
         try:
-            import pyvista  # Optional: used by interface extraction only
+            _import_pyvista()  # Optional: used by interface extraction only
         except Exception as e:
             print(f"\n⚠️  PyVista not available: {e}")
             print("   Interface extraction will be disabled until PyVista works.")
@@ -106,13 +129,13 @@ import re
 TEMPLATE_DIR = "circularTiltingTank"
 VIDEO_FPS = 30
 DEFAULTS = {
-    "H": 0.1,
-    "D": 0.02,
-    "mesh": 0.002,
+    "H": 0.01,
+    "D": 0.0083,
+    "mesh": 0.0005,
     "geo": "flat",
     "tilt_deg": 5.0,
     "duration": 10.0,
-    "dt": 0.001,
+    "dt": 0.1,
     "n_cpus": 1,
 }
 
@@ -171,6 +194,35 @@ def format_time(hours):
     h = total_minutes // 60
     m = total_minutes % 60
     return f"{h:02d}:{m:02d}:00"
+
+def _patch_alpha_water_bc(case_dir):
+    path = os.path.join(case_dir, "0", "alpha.water")
+    if not os.path.exists(path):
+        return
+    with open(path, "r") as f:
+        lines = f.readlines()
+    content = "".join(lines)
+    if "AlphaContactAngle" not in content and "constantAlphaContactAngle" not in content:
+        return
+    out = []
+    in_walls = False
+    for line in lines:
+        if re.match(r"\s*walls\s*\{", line):
+            in_walls = True
+            out.append(line)
+            continue
+        if in_walls:
+            if re.match(r"\s*\}", line):
+                in_walls = False
+                out.append(line)
+                continue
+            if re.match(r"\s*type\s+", line):
+                prefix = re.match(r"^(\s*)", line).group(1)
+                out.append(f"{prefix}type            contactAngle;\n")
+                continue
+        out.append(line)
+    with open(path, "w") as f:
+        f.write("".join(out))
 
 def get_case_name(params):
     """Generates a unique case folder name from parameters."""
@@ -297,6 +349,8 @@ def setup_case(params):
         for f in files:
             os.chmod(os.path.join(root, f), 0o666)
 
+    _patch_alpha_water_bc(case_name)
+
     cwd = os.path.join(os.getcwd(), case_name)
     
     # Static tilt (rotated gravity + zero motion)
@@ -347,6 +401,7 @@ def setup_case(params):
 
 def run_case_local(case_name, n_cpus=1):
     """Runs simulation locally."""
+    _patch_alpha_water_bc(case_name)
     # Check for existing progress
     has_progress = os.path.isdir(os.path.join(case_name, "processor0"))
     if not has_progress:
@@ -364,6 +419,7 @@ def run_case_local(case_name, n_cpus=1):
 
 def run_case_oscar(case_name, params, is_oscar):
     """Submits job to Slurm on Oscar."""
+    _patch_alpha_water_bc(case_name)
     mem, time_limit, n_cells, _ = estimate_resources(params)
     
     # Read the ACTUAL number of subdomains from the case folder
@@ -839,7 +895,7 @@ def generate_video(case_dir):
         
 def extract_interface(case_dir):
     """Extracts the water-air interface (alpha.water=0.5) using PyVista."""
-    import pyvista as pv
+    pv = _import_pyvista()
     import numpy as np
     
     print(f"  📊 Extracting interface for {case_dir} using PyVista...")
@@ -971,7 +1027,7 @@ def _save_points_csv(path, points):
         f.write("\n".join(lines))
 
 def _extract_openfoam_interface_latest(case_dir, results_dir):
-    import pyvista as pv
+    pv = _import_pyvista()
     import numpy as np
 
     foam_file = os.path.join(case_dir, "case.foam")
@@ -1074,7 +1130,7 @@ def _extract_analytical_interface(case_dir, results_dir):
     csv_file = os.path.join(results_dir, "analytical_interface.csv")
     _save_points_csv(csv_file, pts)
     try:
-        import pyvista as pv
+        pv = _import_pyvista()
         poly = pv.PolyData(pts)
         poly.save(os.path.join(results_dir, "analytical_interface.vtp"))
     except Exception:

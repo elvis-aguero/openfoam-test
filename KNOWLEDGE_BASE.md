@@ -37,6 +37,9 @@ When generating OpenFOAM dictionaries using Python `f-strings`, curly braces `{}
 ### 4. Adaptive Stopping via max(U)
 Adaptive stopping is implemented by monitoring `max(U)` from a `fieldMinMax` function object (`system/functions`) and requesting a graceful stop when `max(U)` stays below a threshold. The wrapper script `adaptive_stop.py` sets `stopAt writeNow` and then updates `endTime` to the final time after the run, so `runTimeModifiable yes` is required.
 
+### 5. Alpha Contact Angle Compatibility
+Some OpenFOAM builds lack the `constantAlphaContactAngle` patch field. When available, the compatible `contactAngle` BC is used on `walls`, and `main.py` includes a patch step to replace unsupported contact-angle types in existing cases before running.
+
 ## 🏃 Current Workflow
 
 **Interactive Manager** (`python3 main.py`):
@@ -56,10 +59,11 @@ Adaptive stopping is implemented by monitoring `max(U)` from a `fieldMinMax` fun
     - Extract interface data (PyVista; VTP files + CSV summary)
 
 **Default Parameters**:
-- Tank: H=0.1m, D=0.02m
-- Mesh: 0.002m characteristic length
+- Tank: H=0.01m, D=0.0083m
+- Mesh: 0.0005m characteristic length
 - Tilt: 5.0 degrees about +X
 - Duration: 10s
+- Time step: 0.1s
 
 ## 🎯 Project Goals
 
