@@ -306,15 +306,40 @@ def _patch_control_dict_for_speed(case_dir, params):
         return
     with open(control_path, "r") as f:
         content = f.read()
-    # Aggressive time stepping to reduce wall-clock time.
-    # We only care about the steady-state end configuration.
-    content = re.sub(r'(^\s*maxCo\s+)[^;]+;', r'\g<1>50;', content, flags=re.M)
-    content = re.sub(r'(^\s*maxAlphaCo\s+)[^;]+;', r'\g<1>50;', content, flags=re.M)
+    # Aggressive time stepping to reduce wall-clock time, but keep it stable.
+    # Too-large Courant targets often trigger floating point exceptions early.
+    content = re.sub(r'(^\s*maxCo\s+)[^;]+;', r'\g<1>10;', content, flags=re.M)
+    content = re.sub(r'(^\s*maxAlphaCo\s+)[^;]+;', r'\g<1>5;', content, flags=re.M)
     # Allow dt to grow up to the requested "dt" (defaults to 0.1s now).
     max_dt = float(params.get("dt", DEFAULTS["dt"]))
     content = re.sub(r'(^\s*maxDeltaT\s+)[^;]+;', r'\g<1>' + f"{max_dt:g}" + ';', content, flags=re.M)
     with open(control_path, "w") as f:
         f.write(content)
+
+def _patch_fvsolution_prefpoint(case_dir, params):
+    """
+    Ensure pRefPoint is inside the domain.
+
+    The template previously used z=0.15 (from a larger tank). For small H,
+    this can place pRefPoint outside the mesh and destabilize the pressure
+    solution (can lead to SIGFPE inside GAMG/PCG).
+    """
+    fv_path = os.path.join(case_dir, "system", "fvSolution")
+    if not os.path.exists(fv_path):
+        return
+    H = float(params.get("H", DEFAULTS["H"]))
+    z = 0.5 * H
+    with open(fv_path, "r") as f:
+        content = f.read()
+    content2, _ = re.subn(
+        r'(^\s*pRefPoint\s*)\([^)]*\)\s*;',
+        r'\g<1>' + f"(0 0 {z:.6g});",
+        content,
+        flags=re.M,
+    )
+    if content2 != content:
+        with open(fv_path, "w") as f:
+            f.write(content2)
 
 def _check_mesh_quality_gmsh(case_dir, msh_path, target_lc):
     try:
@@ -516,6 +541,7 @@ def setup_case(params):
 
     _patch_alpha_water_bc(case_name)
     _ensure_functions_dict(case_name)
+    _patch_fvsolution_prefpoint(case_name, params)
 
     cwd = os.path.join(os.getcwd(), case_name)
     
@@ -572,7 +598,9 @@ def run_case_local(case_name, n_cpus=1):
     """Runs simulation locally."""
     _patch_alpha_water_bc(case_name)
     _ensure_functions_dict(case_name)
-    _patch_control_dict_for_speed(case_name, parse_case_params(case_name))
+    params = parse_case_params(case_name)
+    _patch_fvsolution_prefpoint(case_name, params)
+    _patch_control_dict_for_speed(case_name, params)
     # Check for existing progress
     has_progress = os.path.isdir(os.path.join(case_name, "processor0"))
     if not has_progress:
@@ -592,6 +620,7 @@ def run_case_oscar(case_name, params, is_oscar):
     """Submits job to Slurm on Oscar."""
     _patch_alpha_water_bc(case_name)
     _ensure_functions_dict(case_name)
+    _patch_fvsolution_prefpoint(case_name, params)
     _patch_control_dict_for_speed(case_name, params)
     mem, time_limit, n_cells, _ = estimate_resources(params)
     

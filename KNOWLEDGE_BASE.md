@@ -47,6 +47,9 @@ Some OpenFOAM builds lack the `constantAlphaContactAngle` patch field. When avai
 ### 6. Mesh Quality Preflight (Gmsh MSH2)
 Tiny elements (min edge length << target `lc`) can force extremely small adaptive `deltaT` (e.g., `1e-5`) and explode wall-clock time. The build menu runs a quick Gmsh preflight + MSH2 parser check and warns before generating cases if the mesh looks risky.
 
+### 7. pRefPoint Must Be Inside the Mesh
+`system/fvSolution` sets `pRefPoint` for pressure reference. If it lies outside the domain (common when templates are reused for smaller tanks), the pressure solve can become unstable and may crash with `sigFpe` inside GAMG/PCG. `main.py` patches `pRefPoint` per-case to `(0 0 H/2)`.
+
 ## 🏃 Current Workflow
 
 **Interactive Manager** (`python3 main.py`):

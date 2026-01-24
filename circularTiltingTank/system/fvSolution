@@ -82,7 +82,8 @@ PIMPLE
     nNonOrthogonalCorrectors 0;
     correctPhi      no;
 
-    pRefPoint       (0 0 0.15);
+    // Must be inside the domain; `main.py` also patches this per-case based on H.
+    pRefPoint       (0 0 0.005);
     pRefValue       1e5;
 }
 
