@@ -500,7 +500,7 @@ def _load_mesh_quality_summary(case_dir: str):
     except Exception:
         return None
 
-def _estimate_effective_dt(params, dx=None, max_co=0.5, max_alpha_co=0.25):
+def _estimate_effective_dt(params, dx=None, max_co=1.0, max_alpha_co=0.5):
     """
     Estimate the timestep the solver is likely to run at (order-of-magnitude).
     Used for Oscar walltime sizing, since runtime scales with number of steps.
@@ -516,6 +516,25 @@ def _estimate_effective_dt(params, dx=None, max_co=0.5, max_alpha_co=0.25):
     dt_eff = min(dt_max, dt_co, dt_alpha)
     # Avoid nonsense from bad inputs; this is only for estimation.
     return max(dt_eff, 1e-6)
+
+def _read_control_dict_values(case_dir: str):
+    path = os.path.join(case_dir, "system", "controlDict")
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r") as f:
+            content = f.read()
+    except Exception:
+        return {}
+    values = {}
+    for key in ("maxCo", "maxAlphaCo", "maxDeltaT", "deltaT"):
+        m = re.search(rf"^\s*{key}\s+([^;]+);", content, flags=re.M)
+        if m:
+            try:
+                values[key] = float(m.group(1))
+            except ValueError:
+                pass
+    return values
 
 def estimate_resources(params, case_dir=None, mesh_summary=None):
     """
@@ -547,7 +566,13 @@ def estimate_resources(params, case_dir=None, mesh_summary=None):
     else:
         dx = None
     dx = dx or mesh_size
-    dt_eff = _estimate_effective_dt(params, dx=dx, max_co=0.5, max_alpha_co=0.25)
+    control_vals = _read_control_dict_values(case_dir) if case_dir else {}
+    max_co = float(control_vals.get("maxCo", 1.0))
+    max_alpha_co = float(control_vals.get("maxAlphaCo", 0.5))
+    dt_max = float(control_vals.get("maxDeltaT", params.get("dt", DEFAULTS["dt"])))
+    params_eff = params.copy()
+    params_eff["dt"] = dt_max
+    dt_eff = _estimate_effective_dt(params_eff, dx=dx, max_co=max_co, max_alpha_co=max_alpha_co)
     n_steps = max(1.0, duration / dt_eff)
 
     # Calibrated from observed Oscar runs: ~0.0016 CPU-hr per (Mcell-step) in this repo.
