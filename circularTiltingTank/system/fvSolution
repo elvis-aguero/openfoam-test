@@ -18,8 +18,8 @@ solvers
 {
     alpha.water
     {
-        nCorrectors     1;
-        nSubCycles      1;
+        nCorrectors     2;
+        nSubCycles      2;
     }
 
     "pcorr.*"
@@ -78,7 +78,7 @@ solvers
 PIMPLE
 {
     momentumPredictor no;
-    nCorrectors     1;
+    nCorrectors     2;
     nNonOrthogonalCorrectors 0;
     correctPhi      no;
 

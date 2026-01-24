@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Local virtual environments
+sloshing/
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# OpenFOAM generated cases/results
+case_*/
+processor*/
+postProcessing/
+*.foam
+
+# Mesh/geometry artifacts
+*.msh
+*.geo
+
+# Slurm
+slurm*.out
+slurm*.err
+*.slurm
+

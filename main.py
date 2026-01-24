@@ -306,16 +306,25 @@ def _patch_control_dict_for_speed(case_dir, params):
         return
     with open(control_path, "r") as f:
         content = f.read()
-    # Aggressive time stepping to reduce wall-clock time, but keep it stable.
-    # Too-large Courant targets often trigger floating point exceptions early.
-    content = re.sub(r'(^\s*maxCo\s+)[^;]+;', r'\g<1>10;', content, flags=re.M)
-    content = re.sub(r'(^\s*maxAlphaCo\s+)[^;]+;', r'\g<1>5;', content, flags=re.M)
-    # Allow dt to grow up to the requested "dt" (defaults to 0.1s now).
+    # Conservative, stability-first time stepping for VOF.
+    content = re.sub(r'(^\s*maxCo\s+)[^;]+;', r'\g<1>0.5;', content, flags=re.M)
+    content = re.sub(r'(^\s*maxAlphaCo\s+)[^;]+;', r'\g<1>0.25;', content, flags=re.M)
+
+    # `dt` is treated as the maximum allowed timestep (maxDeltaT).
     max_dt = float(params.get("dt", DEFAULTS["dt"]))
     content = re.sub(r'(^\s*maxDeltaT\s+)[^;]+;', r'\g<1>' + f"{max_dt:g}" + ';', content, flags=re.M)
-    # Keep the very first step conservative to avoid immediate blow-ups when gravity is applied.
-    dt0 = min(max_dt, 1e-3)
+
+    # Start small to avoid first-step blow-ups; adjustable time step will ramp up.
+    dt0 = min(max_dt, 1e-4)
     content = re.sub(r'(^\s*deltaT\s+)[^;]+;', r'\g<1>' + f"{dt0:g}" + ';', content, flags=re.M)
+
+    # Ensure we always write something even if we stop early (and keep I/O low).
+    # `stopAt writeNow` will still force a final write at steady state.
+    duration = float(params.get("duration", DEFAULTS["duration"]))
+    write_interval = max(0.1, min(1.0, duration / 20.0))
+    content = re.sub(r'(^\s*writeControl\s+)[^;]+;', r'\g<1>adjustableRunTime;', content, flags=re.M)
+    content = re.sub(r'(^\s*writeInterval\s+)[^;]+;', r'\g<1>' + f"{write_interval:g}" + ';', content, flags=re.M)
+    content = re.sub(r'(^\s*purgeWrite\s+)[^;]+;', r'\g<1>2;', content, flags=re.M)
     with open(control_path, "w") as f:
         f.write(content)
 
@@ -350,6 +359,28 @@ def _patch_fvsolution_prefpoint(case_dir, params):
     if content2 != content:
         with open(fv_path, "w") as f:
             f.write(content2)
+
+def _patch_fvsolution_for_stability(case_dir):
+    """
+    Conservative defaults that tend to keep VOF bounded.
+    We keep this minimal to avoid version-specific dictionary pitfalls.
+    """
+    fv_path = os.path.join(case_dir, "system", "fvSolution")
+    if not os.path.exists(fv_path):
+        return
+    with open(fv_path, "r") as f:
+        content = f.read()
+
+    # alpha.water block: more correction + subcycling.
+    # We only patch if the keys exist in the file to avoid injecting unsupported syntax.
+    content = re.sub(r'(^\s*nCorrectors\s+)[^;]+;', r'\g<1>2;', content, flags=re.M)
+    content = re.sub(r'(^\s*nSubCycles\s+)[^;]+;', r'\g<1>2;', content, flags=re.M)
+
+    # PIMPLE block: at least 2 correctors improves robustness.
+    content = re.sub(r'(^\s*nCorrectors\s+)[^;]+;', r'\g<1>2;', content, flags=re.M)
+
+    with open(fv_path, "w") as f:
+        f.write(content)
 
 def _check_mesh_quality_gmsh(case_dir, msh_path, target_lc):
     try:
@@ -416,7 +447,8 @@ def _preflight_mesh_quality(params):
                 check=True,
                 capture_output=True,
             )
-            return _check_mesh_quality_gmsh(".", os.path.join(tmpdir, "cylinder.msh"), float(params["mesh"]))
+            # Write any JSON into the tempdir so we don't clutter the repo.
+            return _check_mesh_quality_gmsh(tmpdir, os.path.join(tmpdir, "cylinder.msh"), float(params["mesh"]))
         except subprocess.CalledProcessError as e:
             msg = (e.stderr or b"").decode("utf-8", errors="ignore").strip()
             print(f"Mesh preflight: failed ({msg[:200]})")
@@ -458,76 +490,94 @@ def parse_case_params(case_name):
         "dt": DEFAULTS["dt"],
     }
 
-def estimate_resources(params):
+def _load_mesh_quality_summary(case_dir: str):
+    path = os.path.join(case_dir, "postProcessing", "mesh_quality.json")
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+def _estimate_effective_dt(params, dx=None, max_co=0.5, max_alpha_co=0.25):
+    """
+    Estimate the timestep the solver is likely to run at (order-of-magnitude).
+    Used for Oscar walltime sizing, since runtime scales with number of steps.
+    """
+    H = float(params["H"])
+    dt_max = float(params.get("dt", DEFAULTS["dt"]))
+    # Gravity-wave velocity scale (conservative upper bound).
+    u_est = max(1e-6, math.sqrt(9.81 * max(H, 1e-9)))
+    dx_est = float(dx) if dx else float(params["mesh"])
+
+    dt_co = max_co * dx_est / u_est
+    dt_alpha = max_alpha_co * dx_est / u_est
+    dt_eff = min(dt_max, dt_co, dt_alpha)
+    # Avoid nonsense from bad inputs; this is only for estimation.
+    return max(dt_eff, 1e-6)
+
+def estimate_resources(params, case_dir=None, mesh_summary=None):
     """
     Estimates required CPUs, memory, and wall-clock time.
-    Model: ~160 cpu-hours per 1M cells per 1s simulation.
+    Model is based on number of cells * number of timesteps (dt matters).
     """
-    h, d, mesh_size = params['H'], params['D'], params['mesh']
-    duration = params['duration']
-    
-    vol = math.pi * ((d / 2.0)**2) * h
-    cell_vol = mesh_size ** 3
-    n_cells = vol / cell_vol
-    
-    # Calibrated performance model
-    # User's recent runs suggest high CPU usage per cell.
-    # Increasing safety factor significantly to prevent timeouts.
-    # Factor: 80.0 cpu-hours per (Mcell-sec)
-    total_cpu_hours = (n_cells / 1e6) * duration * 80.0
-    
-    # Suggest CPUs (aim for ~4-8 hours wall-clock time)
-    suggested_cpus = math.ceil(total_cpu_hours / 6.0)
-    
-    # --- Efficiency Guard ---
-    # Don't over-parallelize. OpenFOAM sweet spot is 20k-50k cells/core.
-    # Minimum 15k cells per core to avoid communication bottlenecks.
-    max_efficient_cpus = max(1, int(n_cells / 15000))
-    suggested_cpus = min(suggested_cpus, max_efficient_cpus)
-    
-    # Cap at 32 for Oscar free tier / general stability
+    h, d, mesh_size = float(params["H"]), float(params["D"]), float(params["mesh"])
+    duration = float(params["duration"])
+
+    # Prefer measured mesh info when available (post-build), otherwise estimate.
+    ms = mesh_summary
+    if ms is None and case_dir:
+        ms = _load_mesh_quality_summary(case_dir)
+
+    if ms and hasattr(ms, "n_tets"):
+        n_cells = float(getattr(ms, "n_tets") or 0.0)
+    elif isinstance(ms, dict) and ms.get("n_tets"):
+        n_cells = float(ms["n_tets"])
+    else:
+        vol = math.pi * ((d / 2.0) ** 2) * h
+        cell_vol = mesh_size**3
+        n_cells = vol / max(cell_vol, 1e-30)
+    n_cells = max(n_cells, 1.0)
+
+    if ms and hasattr(ms, "min_edge"):
+        dx = getattr(ms, "min_edge")
+    elif isinstance(ms, dict):
+        dx = ms.get("min_edge")
+    else:
+        dx = None
+    dx = dx or mesh_size
+    dt_eff = _estimate_effective_dt(params, dx=dx, max_co=0.5, max_alpha_co=0.25)
+    n_steps = max(1.0, duration / dt_eff)
+
+    # Calibrated from observed Oscar runs: ~0.0016 CPU-hr per (Mcell-step) in this repo.
+    cpu_hr_per_mcell_step = 0.0016
+    total_cpu_hours = cpu_hr_per_mcell_step * (n_cells / 1e6) * n_steps
+
+    # Buffers for variability, I/O, and occasional dt reductions.
+    total_cpu_hours *= 2.0
+
+    # Suggest CPUs to target ~2-4 hours wall time (but avoid over-parallelization).
+    target_wall_h = 3.0
+    suggested_cpus = max(1, int(math.ceil(total_cpu_hours / target_wall_h)))
+
+    # Efficiency guard: keep >=15k cells/core if possible.
+    suggested_cpus = min(suggested_cpus, max(1, int(n_cells / 15000)))
     suggested_cpus = min(suggested_cpus, 32)
-    
-    # For power-of-two enthusiasts or scotch efficiency
     if suggested_cpus > 1:
-        # Round to nearest power of 2 for better decomposition balance
-        suggested_cpus = 2**math.floor(math.log2(suggested_cpus))
+        suggested_cpus = 2 ** math.floor(math.log2(suggested_cpus))
 
     wall_clock_hours = total_cpu_hours / suggested_cpus
-    
-    # Add 50% buffer + 1 hour flat
-    safe_hours = wall_clock_hours * 1.5 + 1.0
-    
-    # Enforce realistic minimums for Oscar
-    # If case is obviously tiny, 1h is fine. If larger, force 4h+.
-    if n_cells > 100000:
-        safe_hours = max(safe_hours, 6.0)
-    else:
-        safe_hours = max(safe_hours, 1.0)
-        
-    # Cap at 24h to avoid long queue times (unless absolutely needed)
+    safe_hours = wall_clock_hours * 1.5 + 0.5
+    safe_hours = max(safe_hours, 1.0)
     safe_hours = min(safe_hours, 24.0)
-    
+
     time_limit = format_time(safe_hours)
-    
-    # Memory: 200MB per 100k cells + base
-    mem_gb = (n_cells / 100000) * 0.2 + 2.0
+
+    # Memory: conservative scaling.
+    mem_gb = (n_cells / 100000.0) * 0.2 + 2.0
     mem_gb = max(4.0, math.ceil(mem_gb))
-    
     return f"{int(mem_gb)}G", time_limit, n_cells, suggested_cpus
-    # Add 100% buffer (2x) to account for variability & I/O
-    wall_clock_hours *= 2.0
-    
-    # Format for Slurm
-    h_str = f"{int(wall_clock_hours):02d}"
-    m_str = f"{int((wall_clock_hours % 1) * 60):02d}"
-    time_limit = f"{h_str}:{m_str}:00"
-    
-    # Memory: ~2GB per 100k cells
-    mem_gb = math.ceil((n_cells / 1e5) * 2.0)
-    mem_gb = max(8, min(mem_gb, 128))
-    
-    return f"{mem_gb}G", time_limit, n_cells, suggested_cpus
 
 # --- Core Actions ---
 
@@ -552,6 +602,7 @@ def setup_case(params):
     _patch_alpha_water_bc(case_name)
     _ensure_functions_dict(case_name)
     _patch_fvsolution_prefpoint(case_name, params)
+    _patch_fvsolution_for_stability(case_name)
 
     cwd = os.path.join(os.getcwd(), case_name)
     
@@ -599,7 +650,7 @@ def setup_case(params):
         content = re.sub(r'endTime\s+[\d.]+;', f'endTime {params["duration"]};', content)
         # Use dt as the maximum dt target; start smaller to keep the first step stable.
         dt_max = float(params["dt"])
-        dt0 = min(dt_max, 1e-3)
+        dt0 = min(dt_max, 1e-4)
         content = re.sub(r'deltaT\s+[\d.]+;', f'deltaT {dt0};', content)
         with open(control_path, 'w') as f:
             f.write(content)
@@ -613,6 +664,7 @@ def run_case_local(case_name, n_cpus=1):
     _ensure_functions_dict(case_name)
     params = parse_case_params(case_name)
     _patch_fvsolution_prefpoint(case_name, params)
+    _patch_fvsolution_for_stability(case_name)
     _patch_control_dict_for_speed(case_name, params)
     # Check for existing progress
     has_progress = os.path.isdir(os.path.join(case_name, "processor0"))
@@ -634,8 +686,9 @@ def run_case_oscar(case_name, params, is_oscar):
     _patch_alpha_water_bc(case_name)
     _ensure_functions_dict(case_name)
     _patch_fvsolution_prefpoint(case_name, params)
+    _patch_fvsolution_for_stability(case_name)
     _patch_control_dict_for_speed(case_name, params)
-    mem, time_limit, n_cells, _ = estimate_resources(params)
+    mem, time_limit, n_cells, _ = estimate_resources(params, case_dir=case_name)
     
     # Read the ACTUAL number of subdomains from the case folder
     # This is the single source of truth for parallel runs
@@ -648,7 +701,9 @@ def run_case_oscar(case_name, params, is_oscar):
             if match:
                 n_cpus = int(match.group(1))
 
-    script_path = os.path.join(case_name, "run_simulation.slurm")
+    slurm_dir = os.path.join(case_name, "slurm")
+    os.makedirs(slurm_dir, exist_ok=True)
+    script_path = os.path.join(slurm_dir, "run_simulation.slurm")
     
     header = [
         "#!/usr/bin/env bash",
@@ -658,8 +713,8 @@ def run_case_oscar(case_name, params, is_oscar):
         f"#SBATCH -n {n_cpus}",
         f"#SBATCH --time={time_limit}",
         f"#SBATCH --mem={mem}",
-        f"#SBATCH -o {case_name}/slurm.%j.out",
-        f"#SBATCH -e {case_name}/slurm.%j.err",
+        f"#SBATCH -o {slurm_dir}/slurm.%j.out",
+        f"#SBATCH -e {slurm_dir}/slurm.%j.err",
         "#SBATCH --mail-type=END",
         "#SBATCH --mail-user=elvis_vera@brown.edu",
         "",
@@ -668,12 +723,13 @@ def run_case_oscar(case_name, params, is_oscar):
         "",
         f"echo 'Case: {case_name}'",
         "# Check if we are resuming (parallel processors or serial time folders existed)",
+        f"cd {case_name}",
         "if [ -d 'processor0' ] || (ls -d [0-9]* 2>/dev/null | grep -v '^0$' | grep -q .) ; then",
         "    echo 'Found existing progress. Resuming simulation...'",
-        f"    make -C {case_name} resume OSCAR=1 N_CPUS={n_cpus}",
+        f"    make resume OSCAR=1 N_CPUS={n_cpus}",
         "else",
         "    echo 'Starting fresh simulation...'",
-        f"    make -C {case_name} run OSCAR=1 N_CPUS={n_cpus}",
+        f"    make run OSCAR=1 N_CPUS={n_cpus}",
         "fi",
         "echo 'End: $(date)'"
     ]
@@ -822,17 +878,19 @@ def menu_build_cases(is_oscar):
     print("   Final Review & Resource Estimation")
     print("="*40)
     
-    # Calculate for the first case in param_sets to show representative estimate
+    # Calculate for the first case in param_sets to show representative estimate.
     sample_params = param_sets[0]
-    mem, time_limit, n_cells, suggested_cpus = estimate_resources(sample_params)
+    # Preflight mesh quality before estimating walltime (dt depends on dx + Co limits).
+    mq = _preflight_mesh_quality(sample_params)
+    mem, time_limit, n_cells, suggested_cpus = estimate_resources(
+        sample_params, mesh_summary=(mq or {}).get("summary")
+    )
     
     print(f"Total Cases to Build: {len(param_sets)}")
     print(f"Estimated Cells per Case: {int(n_cells):,}")
     print(f"Suggested Wall-Clock Time: {time_limit}")
     print(f"Suggested Parallelization: {suggested_cpus} CPUs")
 
-    # Preflight mesh quality to catch tiny elements that force deltaT ~ 1e-5.
-    mq = _preflight_mesh_quality(sample_params)
     if mq and not mq.get("ok", True):
         proceed = input("\n⚠️  Mesh quality looks risky for runtime/stability. Build anyway? (y/n): ").strip().lower()
         if proceed != "y":
@@ -896,7 +954,7 @@ def menu_run_cases(is_oscar):
             run_case_oscar(case_name, params, is_oscar)
         elif has_openfoam:
             # Estimate resources to get n_cpus for local run
-            _, _, _, n_cpus = estimate_resources(params)
+            _, _, _, n_cpus = estimate_resources(params, case_dir=case_name)
             run_case_local(case_name, n_cpus=n_cpus)
         else:
             print(f"  ❌ OpenFOAM not installed. Cannot run {case_name} locally.")
@@ -1469,7 +1527,9 @@ def menu_postprocess(is_oscar):
 
 def run_postprocess_oscar(case_name, action):
     """Submits a post-processing job to Slurm."""
-    script_path = os.path.join(case_name, f"postprocess_{action}.slurm")
+    slurm_dir = os.path.join(case_name, "slurm")
+    os.makedirs(slurm_dir, exist_ok=True)
+    script_path = os.path.join(slurm_dir, f"postprocess_{action}.slurm")
     
     header = [
         "#!/usr/bin/env bash",
@@ -1479,7 +1539,7 @@ def run_postprocess_oscar(case_name, action):
         "#SBATCH -n 1",
         "#SBATCH --time=01:00:00",
         "#SBATCH --mem=8G",
-        f"#SBATCH -o {case_name}/postProcessing/slurm_postprocessing.log",
+        f"#SBATCH -o {slurm_dir}/slurm_postprocessing.log",
         "#SBATCH --open-mode=append",
         "",
         "set -euo pipefail",
@@ -1506,17 +1566,18 @@ def run_postprocess_oscar(case_name, action):
         f"echo 'Python: $(which python)'",  # Debug print
         "export SLOSHING_OFFSCREEN=1",
         "export VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN=1",
+        f"cd {case_name}",
         "if command -v xvfb-run >/dev/null 2>&1; then",
-        f"  xvfb-run -s \"-screen 0 1280x720x24\" python main.py --headless --case {case_name} --action {action}",
+        f"  xvfb-run -s \"-screen 0 1280x720x24\" python ../main.py --headless --case . --action {action}",
         "else",
-        f"  python main.py --headless --case {case_name} --action {action}",
+        f"  python ../main.py --headless --case . --action {action}",
         "fi",
         "echo 'End: $(date)'",
         "echo '------------------------------------------------------------'",
         ""
     ]
     
-    os.makedirs(os.path.join(case_name, "postProcessing"), exist_ok=True)
+    os.makedirs(slurm_dir, exist_ok=True)
     
     with open(script_path, "w") as f:
         f.write("\n".join(header))

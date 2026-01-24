@@ -26,13 +26,13 @@ endTime         5;
 
 // Start with a conservative dt to avoid blowing up on the first step.
 // `maxDeltaT` still caps the growth (set via the manager's dt parameter).
-deltaT          0.001;
+deltaT          1e-4;
 
 writeControl    adjustableRunTime;
 
-writeInterval   1000;
+writeInterval   0.25;
 
-purgeWrite      1;
+purgeWrite      2;
 
 writeFormat     binary;
 
@@ -48,8 +48,8 @@ runTimeModifiable yes;
 
 adjustTimeStep  yes;
 
-maxCo           10;
-maxAlphaCo      5;
+maxCo           0.5;
+maxAlphaCo      0.25;
 maxDeltaT       0.1;
 
 functions
