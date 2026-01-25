@@ -580,7 +580,7 @@ def estimate_resources(params, case_dir=None, mesh_summary=None):
     total_cpu_hours = cpu_hr_per_mcell_step * (n_cells / 1e6) * n_steps
 
     # Buffers for variability, I/O, and occasional dt reductions.
-    total_cpu_hours *= 2.0
+    total_cpu_hours *= 3.0
 
     # Suggest CPUs to target ~2-4 hours wall time (but avoid over-parallelization).
     target_wall_h = 3.0
@@ -593,7 +593,7 @@ def estimate_resources(params, case_dir=None, mesh_summary=None):
         suggested_cpus = 2 ** math.floor(math.log2(suggested_cpus))
 
     wall_clock_hours = total_cpu_hours / suggested_cpus
-    safe_hours = wall_clock_hours * 1.5 + 0.5
+    safe_hours = wall_clock_hours * 2.0 + 1.0
     safe_hours = max(safe_hours, 1.0)
     safe_hours = min(safe_hours, 24.0)
 
