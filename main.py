@@ -201,7 +201,7 @@ def _patch_alpha_water_bc(case_dir):
     path = os.path.join(case_dir, "0", "alpha.water")
     if not os.path.exists(path):
         return
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
         lines = f.readlines()
     content = "".join(lines)
     if "AlphaContactAngle" not in content and "constantAlphaContactAngle" not in content:
@@ -304,7 +304,7 @@ def _patch_control_dict_for_speed(case_dir, params):
     control_path = os.path.join(case_dir, "system", "controlDict")
     if not os.path.exists(control_path):
         return
-    with open(control_path, "r") as f:
+    with open(control_path, "r", encoding="utf-8", errors="ignore") as f:
         content = f.read()
     # Moderate, stability-first time stepping for VOF.
     content = re.sub(r'(^\s*maxCo\s+)[^;]+;', r'\g<1>1.0;', content, flags=re.M)
@@ -341,7 +341,7 @@ def _patch_fvsolution_prefpoint(case_dir, params):
         return
     H = float(params.get("H", DEFAULTS["H"]))
     z = 0.5 * H
-    with open(fv_path, "r") as f:
+    with open(fv_path, "r", encoding="utf-8", errors="ignore") as f:
         content = f.read()
     content2, _ = re.subn(
         r'(^\s*pRefPoint\s*)\([^)]*\)\s*;',
@@ -368,7 +368,7 @@ def _patch_fvsolution_for_stability(case_dir):
     fv_path = os.path.join(case_dir, "system", "fvSolution")
     if not os.path.exists(fv_path):
         return
-    with open(fv_path, "r") as f:
+    with open(fv_path, "r", encoding="utf-8", errors="ignore") as f:
         content = f.read()
 
     # alpha.water block: more correction + subcycling.
@@ -503,7 +503,7 @@ def _load_mesh_quality_summary(case_dir: str):
     if not os.path.exists(path):
         return None
     try:
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
             return json.load(f)
     except Exception:
         return None
@@ -537,7 +537,7 @@ def _read_control_dict_values(case_dir: str):
     if not os.path.exists(path):
         return {}
     try:
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
     except Exception:
         return {}
@@ -677,7 +677,7 @@ def setup_case(params):
     if params.get('n_cpus', 1) > 1:
         decomp_path = os.path.join(cwd, "system", "decomposeParDict")
         if os.path.exists(decomp_path):
-            with open(decomp_path, 'r') as f:
+            with open(decomp_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
             content = re.sub(r'numberOfSubdomains\s+\d+;', f'numberOfSubdomains {params["n_cpus"]};', content)
             with open(decomp_path, 'w') as f:
@@ -686,7 +686,7 @@ def setup_case(params):
     # Update controlDict endTime
     control_path = os.path.join(cwd, "system", "controlDict")
     if os.path.exists(control_path):
-        with open(control_path, 'r') as f:
+        with open(control_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
         content = re.sub(r'endTime\s+[\d.]+;', f'endTime {params["duration"]};', content)
         # Use dt as the maximum dt target; start smaller to keep the first step stable.
@@ -742,7 +742,7 @@ def run_case_oscar(case_name, params, is_oscar):
     n_cpus = 1
     decomp_path = os.path.join(case_name, "system", "decomposeParDict")
     if os.path.exists(decomp_path):
-        with open(decomp_path, 'r') as f:
+        with open(decomp_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
             match = re.search(r'numberOfSubdomains\s+(\d+);', content)
             if match:
@@ -1319,7 +1319,7 @@ def extract_interface(case_dir):
 def _read_scalar_value(path, key, default=None):
     if not os.path.exists(path):
         return default
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
         content = f.read()
     match = re.search(rf'^\s*{re.escape(key)}\s+([-+0-9.eE]+);', content, re.M)
     if not match:
@@ -1332,7 +1332,7 @@ def _read_scalar_value(path, key, default=None):
 def _read_g_vector(path):
     if not os.path.exists(path):
         return (0.0, 0.0, -9.81)
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
         content = f.read()
     match = re.search(r'^\s*value\s+\(([^)]+)\);', content, re.M)
     if not match:

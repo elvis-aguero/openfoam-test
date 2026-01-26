@@ -53,7 +53,7 @@ def load_adaptive_config(path):
         return config
     in_block = False
     try:
-        with open(path, "r") as handle:
+        with open(path, "r", encoding="utf-8", errors="ignore") as handle:
             for line in handle:
                 line = line.split("//", 1)[0].strip()
                 if not line:
@@ -76,7 +76,7 @@ def load_adaptive_config(path):
 def _parse_rows(path):
     rows = []
     try:
-        with open(path, "r") as handle:
+        with open(path, "r", encoding="utf-8", errors="ignore") as handle:
             for line in handle:
                 if not line.strip() or line.lstrip().startswith("#"):
                     continue
@@ -147,7 +147,7 @@ def should_stop_metric(samples, config, threshold_key):
 def update_control_dict(stop_at=None, end_time=None):
     if not os.path.exists(CONTROL_DICT):
         return False
-    with open(CONTROL_DICT, "r") as handle:
+    with open(CONTROL_DICT, "r", encoding="utf-8", errors="ignore") as handle:
         content = handle.read()
     changed = False
     if stop_at is not None:
