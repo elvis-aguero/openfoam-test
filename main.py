@@ -461,7 +461,7 @@ def get_case_name(params):
     """Generates a unique case folder name from parameters."""
     return (
         f"case_H{params['H']}_D{params['D']}_{params['geo']}_tilt_"
-        f"T{params['tilt_deg']}_d{params['duration']}_m{params['mesh']}"
+        f"T{params['tilt_deg']}_m{params['mesh']}"
     )
 
 def is_case_done(case_dir, duration):
@@ -481,20 +481,24 @@ def has_case_progress(case_dir):
 
 def parse_case_params(case_name):
     """Extracts parameters from a case folder name."""
-    # Format: case_H{H}_D{D}_{geo}_tilt_T{tilt}_d{duration}_m{mesh}
+    # Format: case_H{H}_D{D}_{geo}_tilt_T{tilt}[_d{duration}]_m{mesh}
+    # We now skip duration in the name, but support parsing it for backward compatibility.
     match = re.match(
-        r'case_H([\d.]+)_D([\d.]+)_(\w+)_tilt_T([\d.]+)_d([\d.]+)_m([\d.]+)',
+        r'case_H([\d.]+)_D([\d.]+)_(\w+)_tilt_T([\d.]+)(?:_d([\d.]+))?_m([\d.]+)',
         case_name
     )
     if not match:
         return DEFAULTS.copy()
+
+    # If duration group (5) is None, use default.
+    duration = float(match.group(5)) if match.group(5) else DEFAULTS["duration"]
 
     return {
         "H": float(match.group(1)),
         "D": float(match.group(2)),
         "geo": match.group(3),
         "tilt_deg": float(match.group(4)),
-        "duration": float(match.group(5)),
+        "duration": duration,
         "mesh": float(match.group(6)),
         "dt": DEFAULTS["dt"],
     }
@@ -705,6 +709,10 @@ def run_case_local(case_name, n_cpus=1):
     _patch_alpha_water_bc(case_name)
     _ensure_functions_dict(case_name)
     params = parse_case_params(case_name)
+    # Automatically extend cases built with old default (5.0s) to new default (50.0s)
+    # But respect any custom duration > 5.0 that the user might have set explicitly.
+    if abs(params["duration"] - 5.0) < 1e-6:
+         params["duration"] = DEFAULTS["duration"]
     _patch_fvsolution_prefpoint(case_name, params)
     _patch_fvsolution_for_stability(case_name)
     shutil.copy2(os.path.join(TEMPLATE_DIR, "adaptive_stop.py"), os.path.join(case_name, "adaptive_stop.py"))
@@ -732,6 +740,9 @@ def run_case_local(case_name, n_cpus=1):
 
 def run_case_oscar(case_name, params, is_oscar):
     """Submits job to Slurm on Oscar."""
+    # Automatically extend cases built with old default (5.0s) to new default (50.0s)
+    if abs(params.get("duration", 5.0) - 5.0) < 1e-6:
+         params["duration"] = DEFAULTS["duration"]
     _patch_alpha_water_bc(case_name)
     _ensure_functions_dict(case_name)
     _patch_fvsolution_prefpoint(case_name, params)
