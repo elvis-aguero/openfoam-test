@@ -136,7 +136,7 @@ DEFAULTS = {
     "mesh": 0.0005,
     "geo": "flat",
     "tilt_deg": 5.0,
-    "duration": 5.0,
+    "duration": 50.0,
     "dt": 0.1,
     "n_cpus": 1,
 }
@@ -321,10 +321,10 @@ def _patch_control_dict_for_speed(case_dir, params):
     # Ensure we always write something even if we stop early (and keep I/O low).
     # `stopAt writeNow` will still force a final write at steady state.
     duration = float(params.get("duration", DEFAULTS["duration"]))
-    write_interval = 0.1
+    write_interval = 0.25
     content = re.sub(r'(^\s*writeControl\s+)[^;]+;', r'\g<1>adjustableRunTime;', content, flags=re.M)
     content = re.sub(r'(^\s*writeInterval\s+)[^;]+;', r'\g<1>' + f"{write_interval:g}" + ';', content, flags=re.M)
-    content = re.sub(r'(^\s*purgeWrite\s+)[^;]+;', r'\g<1>2;', content, flags=re.M)
+    content = re.sub(r'(^\s*purgeWrite\s+)[^;]+;', r'\g<1>0;', content, flags=re.M)
     with open(control_path, "w") as f:
         f.write(content)
 

@@ -22,7 +22,7 @@ startTime       0;
 
 stopAt          endTime;
 
-endTime         5;
+endTime         50;
 
 // Start with a conservative dt to avoid blowing up on the first step.
 // `maxDeltaT` still caps the growth (set via the manager's dt parameter).
@@ -30,9 +30,9 @@ deltaT          1e-4;
 
 writeControl    adjustableRunTime;
 
-writeInterval   0.1;
+writeInterval   0.25;
 
-purgeWrite      2;
+purgeWrite      0;
 
 writeFormat     binary;
 
