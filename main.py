@@ -322,6 +322,7 @@ def _patch_control_dict_for_speed(case_dir, params):
     # `stopAt writeNow` will still force a final write at steady state.
     duration = float(params.get("duration", DEFAULTS["duration"]))
     write_interval = 0.25
+    content = re.sub(r'(^\s*endTime\s+)[^;]+;', r'\g<1>' + f"{duration:g}" + ';', content, flags=re.M)
     content = re.sub(r'(^\s*writeControl\s+)[^;]+;', r'\g<1>adjustableRunTime;', content, flags=re.M)
     content = re.sub(r'(^\s*writeInterval\s+)[^;]+;', r'\g<1>' + f"{write_interval:g}" + ';', content, flags=re.M)
     content = re.sub(r'(^\s*purgeWrite\s+)[^;]+;', r'\g<1>0;', content, flags=re.M)
@@ -706,6 +707,7 @@ def run_case_local(case_name, n_cpus=1):
     params = parse_case_params(case_name)
     _patch_fvsolution_prefpoint(case_name, params)
     _patch_fvsolution_for_stability(case_name)
+    shutil.copy2(os.path.join(TEMPLATE_DIR, "adaptive_stop.py"), os.path.join(case_name, "adaptive_stop.py"))
     _patch_control_dict_for_speed(case_name, params)
     # Check for existing progress
     has_progress = os.path.isdir(os.path.join(case_name, "processor0"))
@@ -734,6 +736,7 @@ def run_case_oscar(case_name, params, is_oscar):
     _ensure_functions_dict(case_name)
     _patch_fvsolution_prefpoint(case_name, params)
     _patch_fvsolution_for_stability(case_name)
+    shutil.copy2(os.path.join(TEMPLATE_DIR, "adaptive_stop.py"), os.path.join(case_name, "adaptive_stop.py"))
     _patch_control_dict_for_speed(case_name, params)
     mem, time_limit, n_cells, _ = estimate_resources(params, case_dir=case_name)
     
