@@ -1,0 +1,71 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 177961
+##  Job Name : case_H0.0083_D0.0083_flat_tilt_T5.0_d5.0_m0.0005
+##  Nodelist : node2334
+##      CPUs : 1
+##  Mem/Node : 4096 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Mon Jan 26 12:28:07 PM EST 2026
+###############################################################################
+Case: case_H0.0083_D0.0083_flat_tilt_T5.0_d5.0_m0.0005
+Found existing progress. Resuming simulation...
+Resuming in serial...
+/*---------------------------------------------------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  13
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+Build  : 13-cde978a97c93
+Exec   : foamRun
+Date   : Jan 26 2026
+Time   : 12:28:08
+Host   : "node2334.oscar.ccv.brown.edu"
+PID    : 594131
+I/O    : uncollated
+Case   : //work
+nProcs : 1
+sigFpe : Enabling floating point exception trapping (FOAM_SIGFPE).
+fileModificationChecking : Monitoring run-time modified files using timeStampMaster (fileModificationSkew 10)
+allowSystemOperations : Allowing user-supplied system call operations
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+Create time
+
+--> FOAM Warning : 
+    From function Foam::functionObjectList::functionObjectList(const Foam::Time&, bool)
+    in file db/functionObjects/functionObjectList/functionObjectList.C at line 253
+    Both "system/functions" and "system/controlDict/functions" found, the latter will be ignored.
+Create mesh for time = 5
+
+Selecting fvMeshMover motionSolver
+Selecting motion solver: solidBody
+Selecting solid-body motion function sixDoFMotion
+Selecting solver incompressibleVoF
+Selecting viscosity model constant
+Selecting viscosity model constant
+No MRF models present
+
+Restarting alpha
+Courant Number mean: 0.0233466 max: 0.490589
+Interface Courant Number mean: 0.00124256 max: 0.351068
+Selecting turbulence model type laminar
+    Selecting laminar stress model Stokes
+GAMGPCG:  Solving for pcorr, Initial residual = 1, Final residual = 5.02587e-06, No Iterations 6
+
+PIMPLE: No convergence criteria found
+
+
+PIMPLE: Operating solver in transient mode with 1 outer corrector
+PIMPLE: Operating solver in PISO mode
+
+
+
+Starting time loop
+
+End
+
+Adaptive stop enabled: watching norm(U)/numel(U) and interface stillness (alpha.water).
+[adaptive_stop] t=5 normU=0.0267 maxDeltaAlpha=0.0024
+End: $(date)
