@@ -1,0 +1,14 @@
+
+
+--> FOAM FATAL IO ERROR: 
+error in IOstream "Sout" for operation Ostream& operator<<(Ostream&, const char*)
+
+file: Sout at line 451353.
+
+    From function virtual bool Foam::IOstream::check(const char*) const
+    in file db/IOstreams/IOstreams/IOstream.C at line 96.
+
+FOAM exiting
+
+make: *** [Makefile:95: resume] Error 1
+make: write error: stdout: Stale file handle
