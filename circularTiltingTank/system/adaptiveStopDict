@@ -17,7 +17,7 @@ FoamFile
 adaptiveStop
 {
     enabled         yes;
-    maxU            1e-3;
+    normU           5e-5;
     maxDeltaAlpha   1e-4;
     minTime         0.5;
     window          0.5;

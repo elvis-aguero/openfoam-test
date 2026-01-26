@@ -13,7 +13,7 @@ ADAPTIVE_DICT = os.path.join("system", "adaptiveStopDict")
 
 DEFAULT_CONFIG = {
     "enabled": True,
-    "maxU": 1e-3,
+    "normU": 5e-5,
     "maxDeltaAlpha": 1e-4,
     "minTime": 1.0,
     "window": 1.0,
@@ -91,18 +91,17 @@ def _parse_rows(path):
     return rows
 
 
-def _series_max_u(rows):
+def _series_norm_u(rows):
     out = []
     for t, data in rows:
-        max_u = 0.0
-        if len(data) >= 3:
-            n = (len(data) // 3) * 3
-            for i in range(0, n, 3):
-                ux, uy, uz = data[i], data[i + 1], data[i + 2]
-                mag = (ux * ux + uy * uy + uz * uz) ** 0.5
-                if mag > max_u:
-                    max_u = mag
-        out.append((t, max_u))
+        if not data:
+            out.append((t, 0.0))
+            continue
+        sum_sq = sum(v * v for v in data)
+        norm = sum_sq**0.5
+        # Use norm(U) / numel(U) as requested
+        val = norm / len(data)
+        out.append((t, val))
     return out
 
 
@@ -263,7 +262,7 @@ def main():
     if not config.get("enabled", True):
         return subprocess.run(cmd).returncode
 
-    print("Adaptive stop enabled: watching max(|U|) and interface stillness (alpha.water).")
+    print("Adaptive stop enabled: watching norm(U)/numel(U) and interface stillness (alpha.water).")
     proc = subprocess.Popen(cmd)
     stop_requested = False
     last_log = 0.0
@@ -282,8 +281,8 @@ def main():
             latest_da = None
             if u_path:
                 u_rows = _parse_rows(u_path)
-                u_samples = _series_max_u(u_rows)
-                u_ok = should_stop_metric(u_samples, config, "maxU")
+                u_samples = _series_norm_u(u_rows)
+                u_ok = should_stop_metric(u_samples, config, "normU")
                 if u_samples:
                     latest_t = u_samples[-1][0]
                     latest_u = u_samples[-1][1]
@@ -308,7 +307,7 @@ def main():
                 else:
                     da_str = f"{latest_da:.3g}"
                 t_str = f"{latest_t:.6g}" if latest_t is not None else "n/a"
-                print(f"[adaptive_stop] t={t_str} maxU={latest_u:.3g} maxDeltaAlpha={da_str}", flush=True)
+                print(f"[adaptive_stop] t={t_str} normU={latest_u:.3g} maxDeltaAlpha={da_str}", flush=True)
                 last_log = now
             time.sleep(check_interval)
     except KeyboardInterrupt:

@@ -321,7 +321,7 @@ def _patch_control_dict_for_speed(case_dir, params):
     # Ensure we always write something even if we stop early (and keep I/O low).
     # `stopAt writeNow` will still force a final write at steady state.
     duration = float(params.get("duration", DEFAULTS["duration"]))
-    write_interval = max(0.1, min(1.0, duration / 20.0))
+    write_interval = 0.1
     content = re.sub(r'(^\s*writeControl\s+)[^;]+;', r'\g<1>adjustableRunTime;', content, flags=re.M)
     content = re.sub(r'(^\s*writeInterval\s+)[^;]+;', r'\g<1>' + f"{write_interval:g}" + ';', content, flags=re.M)
     content = re.sub(r'(^\s*purgeWrite\s+)[^;]+;', r'\g<1>2;', content, flags=re.M)
@@ -470,6 +470,14 @@ def is_case_done(case_dir, duration):
     final_path = os.path.join(case_dir, final_time_str, "alpha.water")
     return os.path.exists(final_path)
 
+def has_case_progress(case_dir):
+    """Checks if the case has any progress (output folders or processor dirs)."""
+    if os.path.isdir(os.path.join(case_dir, "processor0")):
+        return True
+    # Check for serial time folders (excluding '0')
+    time_folders = [d for d in os.listdir(case_dir) if d.replace('.','',1).isdigit() and d != '0']
+    return len(time_folders) > 0
+
 def parse_case_params(case_name):
     """Extracts parameters from a case folder name."""
     # Format: case_H{H}_D{D}_{geo}_tilt_T{tilt}_d{duration}_m{mesh}
@@ -507,15 +515,22 @@ def _estimate_effective_dt(params, dx=None, max_co=1.0, max_alpha_co=0.5):
     """
     H = float(params["H"])
     dt_max = float(params.get("dt", DEFAULTS["dt"]))
-    # Gravity-wave velocity scale (conservative upper bound).
-    u_est = max(1e-6, math.sqrt(9.81 * max(H, 1e-9)))
+    
+    # Gravity-wave velocity scale.
+    u_gravity = math.sqrt(9.81 * max(H, 1e-9))
+    
+    # For small scales, surface tension and numerical interface noise often
+    # drive higher local velocities than gravity alone. We add a conservative 
+    # floor for u_est (0.5 m/s) to avoid over-optimistic timesteps.
+    u_est = max(0.5, u_gravity)
+    
     dx_est = float(dx) if dx else float(params["mesh"])
 
     dt_co = max_co * dx_est / u_est
     dt_alpha = max_alpha_co * dx_est / u_est
     dt_eff = min(dt_max, dt_co, dt_alpha)
     # Avoid nonsense from bad inputs; this is only for estimation.
-    return max(dt_eff, 1e-6)
+    return max(dt_eff, 1e-7)
 
 def _read_control_dict_values(case_dir: str):
     path = os.path.join(case_dir, "system", "controlDict")
@@ -579,8 +594,9 @@ def estimate_resources(params, case_dir=None, mesh_summary=None):
     cpu_hr_per_mcell_step = 0.0016
     total_cpu_hours = cpu_hr_per_mcell_step * (n_cells / 1e6) * n_steps
 
-    # Buffers for variability, I/O, and occasional dt reductions.
-    total_cpu_hours *= 3.0
+    # Buffers for variability, I/O, and aggressive VOF sub-cycling.
+    # Increased from 3.0 to 6.0 based on observed small-scale VOF performance.
+    total_cpu_hours *= 6.0
 
     # Suggest CPUs to target ~2-4 hours wall time (but avoid over-parallelization).
     target_wall_h = 3.0
@@ -960,7 +976,9 @@ def menu_run_cases(is_oscar):
     for i, c in enumerate(cases):
         # Try to infer duration from folder name (hacky, but works for now)
         # Or assume default
-        status = "(DONE)" if is_case_done(c, DEFAULTS['duration']) else ""
+        done = is_case_done(c, DEFAULTS['duration'])
+        started = has_case_progress(c)
+        status = "(DONE)" if done else ("(STARTED)" if started else "")
         print(f"  {i+1}) {c} {status}")
     
     idx_str = input("\nEnter case indices to run (e.g., 1, 3-5, all): ").strip().lower()
