@@ -1236,6 +1236,110 @@ def generate_video(case_dir):
         print(f"      ⚠️  Could not generate dashboard: {e}")
 
     return True
+
+def generate_lateral_video(case_dir):
+    """Generates a lateral view video of the simulation using PyVista."""
+    pv = _import_pyvista()
+    import imageio
+    import numpy as np
+
+    print(f"  🎬 Generating lateral video for {case_dir}...")
+    
+    foam_file = os.path.join(case_dir, "case.foam")
+    if not os.path.exists(foam_file):
+        with open(foam_file, 'w') as f:
+            pass
+            
+    try:
+        reader = pv.POpenFOAMReader(foam_file)
+    except Exception as e:
+        print(f"  ❌ Error loading OpenFOAM case: {e}")
+        return False
+
+    time_values = reader.time_values
+    if not time_values:
+        print("  ⚠️  No timesteps found.")
+        return False
+        
+    # Output path
+    results_dir = os.path.join(case_dir, "postProcessing")
+    os.makedirs(results_dir, exist_ok=True)
+    video_path = os.path.join(results_dir, "video_lateral.mp4")
+    
+    # Setup Plotter
+    # Use off_screen=True to support headless environments (requires xvfb if no display)
+    off_screen = True 
+    plotter = pv.Plotter(off_screen=off_screen, window_size=(1024, 768))
+    plotter.set_background('white')
+    
+    # Determine bounds from the last timestep (usually fully developed)
+    reader.set_active_time_value(time_values[-1])
+    mesh = reader.read()
+    if mesh.n_blocks > 0:
+        internal_mesh = mesh[0]
+    else:
+        internal_mesh = mesh
+        
+    if internal_mesh is None:
+        print("  ❌ Could not read mesh.")
+        return False
+        
+    bounds = internal_mesh.bounds # (xmin, xmax, ymin, ymax, zmin, zmax)
+    center = [(bounds[0]+bounds[1])/2, (bounds[2]+bounds[3])/2, (bounds[4]+bounds[5])/2]
+    
+    # Camera setup: Side view (Look from -Y towards +Y)
+    # Position: x=center, y=negative large, z=center
+    span = max(bounds[1]-bounds[0], bounds[3]-bounds[2], bounds[5]-bounds[4])
+    camera_pos = [center[0], bounds[2] - span*2.5, center[2]]
+    
+    plotter.camera.position = camera_pos
+    plotter.camera.focal_point = center
+    plotter.camera.up = (0, 0, 1)
+    
+    print(f"    - Target video path: {os.path.abspath(video_path)}")
+    print(f"    - Processing {len(time_values)} frames...")
+    
+    try:
+        with imageio.get_writer(video_path, fps=VIDEO_FPS) as writer:
+            for i, t in enumerate(time_values):
+                plotter.clear()
+                # Re-add light and background? PyVista clears actors but keeps renderer settings usually.
+                # Background is property of renderer.
+                
+                reader.set_active_time_value(t)
+                mesh = reader.read()
+                if mesh.n_blocks > 0:
+                    internal_mesh = mesh[0]
+                else:
+                    internal_mesh = mesh
+                
+                # 1. Interface (alpha.water = 0.5)
+                if 'alpha.water' in internal_mesh.cell_data:
+                    mesh_point = internal_mesh.cell_data_to_point_data()
+                    try:
+                        iso = mesh_point.contour(isosurfaces=[0.5], scalars='alpha.water')
+                        plotter.add_mesh(iso, color='blue', opacity=0.9, smooth_shading=True, lighting=True)
+                    except:
+                        pass # Isosurface might fail if alpha is all 0 or 1
+                
+                # 2. Tank outline (wireframe)
+                plotter.add_mesh(internal_mesh.outline(), color='black')
+                
+                # 3. Time Text
+                plotter.add_text(f"t = {t:.2f} s", position='upper_left', color='black', font_size=12)
+                
+                # Render
+                img = plotter.screenshot(return_img=True)
+                writer.append_data(img)
+                
+                if (i+1) % 20 == 0:
+                    print(f"      Rendered {i+1}/{len(time_values)}")
+        print(f"      ✅ Saved: {os.path.basename(video_path)}")
+    except Exception as e:
+        print(f"      ❌ Error generating video: {e}") 
+        return False
+        
+    return True
         
 def extract_interface(case_dir):
     """Extracts the water-air interface (alpha.water=0.5) using PyVista."""
@@ -1558,6 +1662,7 @@ def menu_postprocess(is_oscar):
     print("\n" + "-"*60)
     print("Select Action:")
     print("  1) Compare Interfaces (Analytical vs OpenFOAM)")
+    print("  2) Generate Lateral View Video")
     print("  Q) Back to Main Menu")
     print("-"*60)
     
@@ -1585,6 +1690,29 @@ def menu_postprocess(is_oscar):
                             run_postprocess_oscar(cases[idx], "compare")
                         return
             compare_interfaces(cases[i])
+    
+    elif choice == '2':
+        print("\n→ Generate Lateral View Video")
+        idx_str = input("  Enter case numbers (e.g., 1, 3-5, all): ").strip().lower()
+        if idx_str == 'all':
+            indices = list(range(len(cases)))
+        else:
+            indices = parse_indices(idx_str, len(cases))
+        
+        if not indices:
+            print("No valid indices selected.")
+            return
+            
+        print(f"\nGenerating videos for {len(indices)} case(s)...")
+        for i in indices:
+            if is_oscar:
+                if i == indices[0]:
+                    submit = input("\n⚠️  Post-processing detected. Submit as Slurm job? (y/n): ").strip().lower()
+                    if submit == 'y':
+                        for idx in indices:
+                            run_postprocess_oscar(cases[idx], "video")
+                        return
+            generate_lateral_video(cases[i])
     elif choice == 'q':
         return
 
@@ -1682,7 +1810,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--headless", action="store_true", help="Run without menu")
     parser.add_argument("--case", type=str, help="Case directory for headless mode")
-    parser.add_argument("--action", type=str, choices=["compare"], help="Action for headless mode")
+    parser.add_argument("--action", type=str, choices=["compare", "video"], help="Action for headless mode")
     
     args = parser.parse_args()
     
@@ -1693,5 +1821,7 @@ if __name__ == "__main__":
         
         if args.action == "compare":
             compare_interfaces(args.case)
+        elif args.action == "video":
+            generate_lateral_video(args.case)
     else:
         main_menu()

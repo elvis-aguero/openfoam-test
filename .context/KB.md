@@ -1,0 +1,16 @@
+# Knowledge Base (Stable Facts Only)
+- Repo map (key dirs/modules):
+  - `main.py`: Interactive manager for building/running cases.
+  - `circularTiltingTank`: OpenFOAM template directory.
+  - `case_*`: Individual simulation case folders.
+  - `mesh_quality.py`, `yl_nonlin.py`: Support scripts for mesh and pre-processing.
+- Build/test commands:
+  - `python3 main.py` to start the interactive manager.
+- Style/conventions:
+  - OpenFOAM 13 syntax for dictionaries (notably `setFieldsDict`).
+- Dependency/tooling notes:
+  - OpenFOAM, Gmsh, Slurm (if on Oscar).
+- Known pitfalls:
+  - `setFields` syntax change in OF13.
+  - `pRefPoint` must be inside the mesh.
+  - Mesh quality (MSH2 format) is critical for performance.

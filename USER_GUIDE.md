@@ -53,6 +53,10 @@ Select **3) Postprocess** from the main menu:
   - `case_*/postProcessing/interface_compare/analytical_interface.csv`
   - `case_*/postProcessing/interface_compare/openfoam_interface_t*.vtp` (and `.csv` point cloud)
   - `case_*/postProcessing/interface_compare/comparison_summary.csv`
+**Generate Lateral Video**:
+- Creates a side-view video of the simulation (checking for steady state visually).
+- Output: `case_*/postProcessing/video_lateral.mp4`
+- Works in headless environments (e.g. Oscar) via offscreen rendering.
 
 ---
 
