@@ -3,7 +3,7 @@
 #SBATCH -p batch
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH --time=06:58:00
+#SBATCH --time=24:00:00
 #SBATCH --mem=4G
 #SBATCH -o case_H0.0083_D0.0083_flat_tilt_T5.0_d5.0_m0.0005/slurm/slurm.%j.out
 #SBATCH -e case_H0.0083_D0.0083_flat_tilt_T5.0_d5.0_m0.0005/slurm/slurm.%j.err
