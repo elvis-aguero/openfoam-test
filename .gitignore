@@ -21,9 +21,24 @@ case_*/**
 !case_*/slurm/*.err
 !case_*/slurm/*.log
 !case_*/slurm/*.slurm
-processor*/
-postProcessing/
+# Result files to track
+!**/*.mp4
+!**/*.csv
+!**/postProcessing/
+!**/postProcessing/**.vtp
+# Except standard large FOAM results
 *.foam
+processor*/
+0/
+[1-9]*/
+constant/polyMesh/
+# Ignore raw OpenFOAM postProcessing fields (usually large/redundant)
+**/postProcessing/probes/
+**/postProcessing/cuttingPlane/
+**/postProcessing/forceCoeffs/
+**/postProcessing/forces/
+**/postProcessing/nearWallFields/
+**/postProcessing/surfaceFieldValue/
 
 # Mesh/geometry artifacts
 *.msh
