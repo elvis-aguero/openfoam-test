@@ -4,6 +4,7 @@ import sys
 import shutil
 import subprocess
 import argparse
+import threading
 
 def _patch_vtk_for_pyvista():
     try:
@@ -456,6 +457,20 @@ def _preflight_mesh_quality(params):
         except Exception as e:
             print(f"Mesh preflight: failed ({e})")
     return {"ok": True, "summary": None}
+
+def _start_mesh_preflight_async(params):
+    """
+    Fire-and-forget mesh preflight so the UI doesn't block.
+    Prints a completion message when done.
+    """
+    def _worker():
+        result = _preflight_mesh_quality(params)
+        status = "ok" if result.get("ok", True) else "warnings"
+        print(f"Mesh preflight complete ({status}).")
+
+    t = threading.Thread(target=_worker, name="mesh_preflight", daemon=True)
+    t.start()
+    return t
 
 def get_case_name(params):
     """Generates a unique case folder name from parameters."""
@@ -941,10 +956,11 @@ def menu_build_cases(is_oscar):
     
     # Calculate for the first case in param_sets to show representative estimate.
     sample_params = param_sets[0]
-    # Preflight mesh quality before estimating walltime (dt depends on dx + Co limits).
-    mq = _preflight_mesh_quality(sample_params)
+    # Preflight mesh quality in the background so we don't block the UI.
+    print("Mesh preflight started in background (results will print when ready).")
+    _start_mesh_preflight_async(sample_params)
     mem, time_limit, n_cells, suggested_cpus = estimate_resources(
-        sample_params, mesh_summary=(mq or {}).get("summary")
+        sample_params, mesh_summary=None
     )
     
     print(f"Total Cases to Build: {len(param_sets)}")
@@ -952,12 +968,6 @@ def menu_build_cases(is_oscar):
     print(f"Suggested Wall-Clock Time: {time_limit}")
     print(f"Suggested Parallelization: {suggested_cpus} CPUs")
 
-    if mq and not mq.get("ok", True):
-        proceed = input("\n⚠️  Mesh quality looks risky for runtime/stability. Build anyway? (y/n): ").strip().lower()
-        if proceed != "y":
-            print("Cancelled.")
-            return
-    
     if suggested_cpus > 1 and current_values['n_cpus'] == 1:
         print(f"\n💡 [RECOMMENDED] Multi-processing is highly recommended for this cell count.")
         use_multi = input(f"   Enable parallel execution with {suggested_cpus} CPUs? (y/n): ").strip().lower()

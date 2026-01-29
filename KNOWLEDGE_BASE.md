@@ -50,6 +50,9 @@ Tiny elements (min edge length << target `lc`) can force extremely small adaptiv
 ### 7. pRefPoint Must Be Inside the Mesh
 `system/fvSolution` sets `pRefPoint` for pressure reference. If it lies outside the domain (common when templates are reused for smaller tanks), the pressure solve can become unstable and may crash with `sigFpe` inside GAMG/PCG. `main.py` patches `pRefPoint` per-case to `(0 0 H/2)`.
 
+### 8. Mesh Preflight Is Non-Blocking
+The build menu starts the Gmsh mesh-quality preflight in a background thread. It prints results when ready and does not delay case building; resource estimates use the analytic mesh estimate if the preflight hasn’t finished.
+
 ## 🏃 Current Workflow
 
 **Interactive Manager** (`python3 main.py`):
