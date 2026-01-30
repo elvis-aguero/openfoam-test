@@ -1,0 +1,38 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 217964
+##  Job Name : post_compare_case_H0.0083_D0.0083_flat_tilt_T20.0_m0.0005
+##  Nodelist : node2335
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Thu Jan 29 03:40:21 PM EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: compare | Case: case_H0.0083_D0.0083_flat_tilt_T20.0_m0.0005
+Date: $(date)
+Python: $(which python)
+  📊 Comparing analytical and OpenFOAM interfaces for ....
+  ✅ Comparison complete.
+End: $(date)
+------------------------------------------------------------
+## SLURM PROLOG ###############################################################
+##    Job ID : 220003
+##  Job Name : post_video_case_H0.0083_D0.0083_flat_tilt_T20.0_m0.0005
+##  Nodelist : node2334
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Thu Jan 29 05:52:01 PM EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: video | Case: case_H0.0083_D0.0083_flat_tilt_T20.0_m0.0005
+Date: $(date)
+Python: $(which python)
+[0m[33m2026-01-29 17:52:08.493 (   4.881s) [    7FB1934E7240]vtkXOpenGLRenderWindow.:1458  WARN| bad X server connection. DISPLAY=[0m
+  🎬 Generating lateral video for ....
+    - Target video path: /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/case_H0.0083_D0.0083_flat_tilt_T20.0_m0.0005/postProcessing/video_lateral.mp4
+    - Processing 33 frames...
+      Rendered 20/33
+      ✅ Saved: video_lateral.mp4
+End: $(date)
+------------------------------------------------------------

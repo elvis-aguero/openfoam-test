@@ -1,0 +1,21 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 220005
+##  Job Name : post_video_case_H0.01_D0.0083_flat_tilt_T5.0_d5.0_m0.0005
+##  Nodelist : node2337
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Thu Jan 29 05:52:01 PM EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: video | Case: case_H0.01_D0.0083_flat_tilt_T5.0_d5.0_m0.0005
+Date: $(date)
+Python: $(which python)
+[0m[33m2026-01-29 17:52:08.676 (   5.163s) [    7F360ADD5240]vtkXOpenGLRenderWindow.:1458  WARN| bad X server connection. DISPLAY=[0m
+  🎬 Generating lateral video for ....
+    - Target video path: /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/case_H0.01_D0.0083_flat_tilt_T5.0_d5.0_m0.0005/postProcessing/video_lateral.mp4
+    - Processing 34 frames...
+      Rendered 20/34
+      ✅ Saved: video_lateral.mp4
+End: $(date)
+------------------------------------------------------------
