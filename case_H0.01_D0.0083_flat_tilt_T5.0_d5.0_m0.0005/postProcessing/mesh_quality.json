@@ -1,0 +1,11 @@
+{
+  "max_aspect_ratio": 2.722344178733873,
+  "max_edge": 0.0011123006544355742,
+  "mean_edge": 0.0006461900166731269,
+  "min_edge": 0.00023724308339030916,
+  "min_volume": 4.368433867136822e-12,
+  "msh_path": "/oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/case_H0.01_D0.0083_flat_tilt_T5.0_d5.0_m0.0005/cylinder.msh",
+  "n_elements": 22321,
+  "n_nodes": 4085,
+  "n_tets": 18819
+}

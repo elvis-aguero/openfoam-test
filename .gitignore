@@ -1,10 +1,8 @@
-# Python
+# Python/venv
 __pycache__/
 *.py[cod]
 *.pyo
 .pytest_cache/
-
-# Local virtual environments
 sloshing/
 .venv/
 venv/
@@ -12,36 +10,41 @@ venv/
 # macOS
 .DS_Store
 
-# OpenFOAM generated cases/results
-case_*/
-!case_*/
-case_*/**
-!case_*/slurm/
-!case_*/slurm/*.out
-!case_*/slurm/*.err
-!case_*/slurm/*.log
-!case_*/slurm/*.slurm
-# Result files to track
-!**/*.mp4
-!**/*.csv
-!**/postProcessing/
-!**/postProcessing/**.vtp
-# Except standard large FOAM results
-*.foam
-processor*/
-0/
-[1-9]*/
-constant/polyMesh/
-# Ignore raw OpenFOAM postProcessing fields (usually large/redundant)
-**/postProcessing/probes/
-**/postProcessing/cuttingPlane/
-**/postProcessing/forceCoeffs/
-**/postProcessing/forces/
-**/postProcessing/nearWallFields/
-**/postProcessing/surfaceFieldValue/
+# ============================================
+# OpenFOAM
+# ============================================
 
-# Mesh/geometry artifacts
+# Ignore everything in case_* except specific directories
+case_*/*
+!case_*/slurm/
+!case_*/constant/
+!case_*/system/
+!case_*/postProcessing/
+
+# Track everything in those directories
+!case_*/slurm/*
+!case_*/constant/*
+!case_*/system/*
+!case_*/postProcessing/*
+
+# But ignore large/binary files in postProcessing
+case_*/postProcessing/**/*.dat
+case_*/postProcessing/**/*.bin
+case_*/postProcessing/**/U
+case_*/postProcessing/**/p
+case_*/postProcessing/**/alpha.water
+
+# Keep specific files
+!case_*/postProcessing/mesh_quality.json
+!case_*/postProcessing/**/*.vtp
+
+# Ignore time directories and mesh files
+case_*/[0-9]*/
+case_*/processor*/
 *.msh
 *.geo
+*.foam
 
-# Slurm
+# Keep result files
+!**/*.mp4
+!**/*.csv
