@@ -1,4 +1,5 @@
 #!/bin/bash
+set +H
 for file in case_*/slurm/slurm.*.out; do
   if [ -f "$file" ] && [ $(stat -c%s "$file") -gt 100000000 ]; then
     echo "Processing $file..."
