@@ -48,3 +48,7 @@ case_*/processor*/
 # Keep result files
 !**/*.mp4
 !**/*.csv
+
+# OpenFOAM mesh (regenerated; do not version)
+**/constant/polyMesh/**
+
