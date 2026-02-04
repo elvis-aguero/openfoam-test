@@ -1,0 +1,7 @@
+metric,value
+openfoam_time,4.38797
+analytical_area,5.518820240018937e-05
+analytical_hL,1.0199374908641335e-06
+l2_rms,0.0008682570974514593
+l2_sum,0.11022420406299702
+num_samples,16116

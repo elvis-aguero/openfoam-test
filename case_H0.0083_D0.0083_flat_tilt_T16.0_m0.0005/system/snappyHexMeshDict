@@ -1,0 +1,109 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  13
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       dictionary;
+    object      snappyHexMeshDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+castellatedMesh true;
+snap            true;
+addLayers       false;
+mergeTolerance  1e-6;
+
+geometry
+{
+    cylinder
+    {
+        type triSurfaceMesh;
+        file "cylinder.stl";
+        name cylinder;
+        regions
+        {
+            atmosphere { name atmosphere; }
+            walls       { name walls; }
+        }
+    }
+};
+
+castellatedMeshControls
+{
+    maxLocalCells       2000000;
+    maxGlobalCells      20000000;
+    minRefinementCells  0;
+    nCellsBetweenLevels 2;
+    allowFreeStandingZoneFaces true;
+
+    features
+    (
+        {
+            file "cylinder.eMesh";
+            level 1;
+        }
+    );
+
+    refinementSurfaces
+    {
+        cylinder
+        {
+            level (1 1);
+            regions
+            {
+                walls
+                {
+                    level (1 1);
+                    patchInfo { type wall; }
+                }
+                atmosphere
+                {
+                    level (1 1);
+                    patchInfo { type patch; }
+                }
+            }
+        }
+    }
+
+    resolveFeatureAngle 30;
+    locationInMesh (0.0 0.0 0.002075);
+}
+
+snapControls
+{
+    nSmoothPatch 3;
+    tolerance   2.0;
+    nSolveIter  30;
+    nRelaxIter  5;
+}
+
+addLayersControls
+{
+    relativeSizes       true;
+    layers              { };
+}
+
+meshQualityControls
+{
+    maxNonOrtho         65;
+    maxBoundarySkewness 20;
+    maxInternalSkewness 4;
+    maxConcave          80;
+    minVol              1e-13;
+    minArea             1e-13;
+    minTetQuality       1e-9;
+    minTwist            0.02;
+    minDeterminant      0.001;
+    minFaceWeight       0.02;
+    minVolRatio         0.01;
+    minTriangleTwist    -1;
+    nSmoothScale        4;
+    errorReduction      0.75;
+}
+
+// ************************************************************************* //

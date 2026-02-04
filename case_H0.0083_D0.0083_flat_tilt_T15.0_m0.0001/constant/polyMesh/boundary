@@ -14,21 +14,13 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-2
+1
 (
-    walls
+    background
     {
         type            patch;
-        physicalType    patch;
-        nFaces          62715;
-        startFace       3399364;
-    }
-    atmosphere
-    {
-        type            patch;
-        physicalType    patch;
-        nFaces          12609;
-        startFace       3462079;
+        nFaces          11266;
+        startFace       238435;
     }
 )
 

@@ -135,6 +135,7 @@ DEFAULTS = {
     "H": 0.01,
     "D": 0.0083,
     "mesh": 0.0005,
+    "mesher": "gmsh",
     "geo": "flat",
     "tilt_deg": 5.0,
     "duration": 50.0,
@@ -297,8 +298,32 @@ def _write_functions_dict(case_dir, params):
     with open(functions_path, "w") as f:
         f.write("\n".join(content))
 
+def _write_case_params(case_dir, params):
+    path = os.path.join(case_dir, "case_params.json")
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(params, f, indent=2, sort_keys=True)
+    except Exception as e:
+        print(f"  ⚠️  Failed to write case_params.json: {e}")
+
+def _load_case_params(case_dir):
+    """
+    Read-only access to case parameters.
+    Preference order:
+      1) case_params.json (authoritative build-time params)
+      2) parse from folder name (fallback for legacy cases)
+    """
+    path = os.path.join(case_dir, "case_params.json")
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"  ⚠️  Failed to read case_params.json, falling back to name: {e}")
+    return parse_case_params(os.path.basename(case_dir))
+
 def _ensure_functions_dict(case_dir):
-    params = parse_case_params(os.path.basename(case_dir))
+    params = _load_case_params(case_dir)
     _write_functions_dict(case_dir, params)
 
 def _patch_control_dict_for_speed(case_dir, params):
@@ -421,6 +446,8 @@ def _check_mesh_quality_gmsh(case_dir, msh_path, target_lc):
 
 def _preflight_mesh_quality(params):
     """Build a temporary Gmsh mesh and warn if it produces tiny elements."""
+    if params.get("mesher", "gmsh") != "gmsh":
+        return {"ok": True, "summary": None}
     gmsh_path = shutil.which("gmsh")
     if not gmsh_path:
         print("Mesh preflight: gmsh not found; skipping mesh-quality check.")
@@ -438,6 +465,7 @@ def _preflight_mesh_quality(params):
                     str(params["D"]),
                     str(params["mesh"]),
                     params["geo"],
+                    params.get("mesher", "gmsh"),
                 ],
                 cwd=tmpdir,
                 check=True,
@@ -479,20 +507,70 @@ def get_case_name(params):
         f"T{params['tilt_deg']}_m{params['mesh']}"
     )
 
+def _list_time_folders(path):
+    try:
+        return sorted(
+            [d for d in os.listdir(path) if d.replace(".", "", 1).isdigit()],
+            key=lambda x: float(x),
+        )
+    except FileNotFoundError:
+        return []
+
+def _latest_time_in_dir(path):
+    times = [float(d) for d in _list_time_folders(path)]
+    return max(times) if times else None
+
+def _get_latest_time(case_dir):
+    # Prefer serial latest time if present (excluding 0)
+    times = [t for t in _list_time_folders(case_dir) if t != "0"]
+    if times:
+        return max(float(t) for t in times)
+    # Fall back to parallel latest time across processors
+    latest = None
+    for pd in [d for d in os.listdir(case_dir) if d.startswith("processor")]:
+        ppath = os.path.join(case_dir, pd)
+        t = _latest_time_in_dir(ppath)
+        if t is None or t == 0:
+            continue
+        latest = t if latest is None else max(latest, t)
+    return latest
+
 def is_case_done(case_dir, duration):
     """Checks if the simulation for this case is complete."""
-    # Check if final time folder exists with alpha.water
-    final_time_str = str(int(duration)) if duration == int(duration) else str(duration)
-    final_path = os.path.join(case_dir, final_time_str, "alpha.water")
-    return os.path.exists(final_path)
+    latest = _get_latest_time(case_dir)
+    if latest is None:
+        return False
+    return latest >= float(duration) - 1e-9
+
+def _get_case_duration(case_dir):
+    params = _load_case_params(case_dir)
+    return float(params.get("duration", DEFAULTS["duration"]))
+
+def _get_case_status(case_dir):
+    duration = _get_case_duration(case_dir)
+    if is_case_done(case_dir, duration):
+        return "FINISHED"
+    if has_case_progress(case_dir):
+        return "UNFINISHED"
+    return "NEW"
 
 def has_case_progress(case_dir):
     """Checks if the case has any progress (output folders or processor dirs)."""
-    if os.path.isdir(os.path.join(case_dir, "processor0")):
-        return True
     # Check for serial time folders (excluding '0')
     time_folders = [d for d in os.listdir(case_dir) if d.replace('.','',1).isdigit() and d != '0']
-    return len(time_folders) > 0
+    if time_folders:
+        return True
+    # Check for parallel time folders (excluding '0')
+    proc_dirs = [d for d in os.listdir(case_dir) if d.startswith("processor")]
+    for pd in proc_dirs:
+        ppath = os.path.join(case_dir, pd)
+        try:
+            times = [d for d in os.listdir(ppath) if d.replace('.','',1).isdigit() and d != '0']
+            if times:
+                return True
+        except FileNotFoundError:
+            continue
+    return False
 
 def parse_case_params(case_name):
     """Extracts parameters from a case folder name."""
@@ -516,6 +594,7 @@ def parse_case_params(case_name):
         "duration": duration,
         "mesh": float(match.group(6)),
         "dt": DEFAULTS["dt"],
+        "mesher": DEFAULTS["mesher"],
     }
 
 def _load_mesh_quality_summary(case_dir: str):
@@ -571,6 +650,92 @@ def _read_control_dict_values(case_dir: str):
                 pass
     return values
 
+def _read_phase_sigma(case_dir: str):
+    path = os.path.join(case_dir, "constant", "phaseProperties")
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+    except Exception:
+        return None
+    m = re.search(r"^\s*sigma\s+([^;]+);", content, flags=re.M)
+    if not m:
+        return None
+    try:
+        return float(m.group(1))
+    except ValueError:
+        return None
+
+def _read_rho_nu(case_dir: str, phase: str):
+    path = os.path.join(case_dir, "constant", f"physicalProperties.{phase}")
+    if not os.path.exists(path):
+        return None, None
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+    except Exception:
+        return None, None
+    def _read_value(key):
+        m = re.search(rf"^\s*{key}\s+([^;]+);", content, flags=re.M)
+        if not m:
+            return None
+        try:
+            return float(m.group(1))
+        except ValueError:
+            return None
+    return _read_value("rho"), _read_value("nu")
+
+def _estimate_capillary_dt(dx, rho1, rho2, sigma, c_sigma=0.063):
+    if not dx or not rho1 or not rho2 or not sigma:
+        return None
+    return c_sigma * math.sqrt(((rho1 + rho2) * (dx ** 3)) / sigma)
+
+def _estimate_viscous_dt(dx, nu):
+    if not dx or not nu:
+        return None
+    return (dx ** 2) / (4.0 * nu)
+
+def _read_n_cpus_from_decompose(case_dir: str, default: int = 1) -> int:
+    """Read numberOfSubdomains from decomposeParDict, falling back to default."""
+    path = os.path.join(case_dir, "system", "decomposeParDict")
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+    except Exception:
+        return default
+    match = re.search(r'numberOfSubdomains\s+([\d.]+)\s*;', content)
+    if not match:
+        return default
+    try:
+        return max(1, int(float(match.group(1))))
+    except ValueError:
+        return default
+
+def _write_mesh_tool(case_dir: str, tool: str) -> None:
+    path = os.path.join(case_dir, "system", "meshTool")
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(f"{tool}\n")
+    except Exception:
+        pass
+
+def _read_mesh_tool(case_dir: str, default: str = "gmsh") -> str:
+    path = os.path.join(case_dir, "system", "meshTool")
+    if not os.path.exists(path):
+        snappy_dict = os.path.join(case_dir, "system", "snappyHexMeshDict")
+        if os.path.exists(snappy_dict):
+            return "snappy"
+        return default
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            val = f.read().strip().lower()
+        return val or default
+    except Exception:
+        return default
+
 def estimate_resources(params, case_dir=None, mesh_summary=None):
     """
     Estimates required CPUs, memory, and wall-clock time.
@@ -608,6 +773,34 @@ def estimate_resources(params, case_dir=None, mesh_summary=None):
     params_eff = params.copy()
     params_eff["dt"] = dt_max
     dt_eff = _estimate_effective_dt(params_eff, dx=dx, max_co=max_co, max_alpha_co=max_alpha_co)
+
+    # Add capillary + viscous stability limits when phase properties are available.
+    if case_dir:
+        sigma = _read_phase_sigma(case_dir)
+        rho_w, nu_w = _read_rho_nu(case_dir, "water")
+        rho_a, nu_a = _read_rho_nu(case_dir, "air")
+    else:
+        sigma = _read_phase_sigma(TEMPLATE_DIR)
+        rho_w, nu_w = _read_rho_nu(TEMPLATE_DIR, "water")
+        rho_a, nu_a = _read_rho_nu(TEMPLATE_DIR, "air")
+
+    if sigma and rho_w and rho_a:
+        dt_sigma = _estimate_capillary_dt(dx, rho_w, rho_a, sigma)
+        if dt_sigma:
+            dt_eff = min(dt_eff, dt_sigma)
+
+    nu_max = None
+    if nu_w and nu_a:
+        nu_max = max(nu_w, nu_a)
+    elif nu_w:
+        nu_max = nu_w
+    elif nu_a:
+        nu_max = nu_a
+
+    if nu_max:
+        dt_nu = _estimate_viscous_dt(dx, nu_max)
+        if dt_nu:
+            dt_eff = min(dt_eff, dt_nu)
     n_steps = max(1.0, duration / dt_eff)
 
     # Calibrated from observed Oscar runs: ~0.0016 CPU-hr per (Mcell-step) in this repo.
@@ -680,17 +873,19 @@ def setup_case(params):
     # Mesh Geometry
     subprocess.run([
         sys.executable, "generate_mesh.py", 
-        str(params['H']), str(params['D']), str(params['mesh']), params['geo']
+        str(params['H']), str(params['D']), str(params['mesh']), params['geo'], params.get("mesher", "gmsh")
     ], cwd=cwd, check=True, capture_output=True)
+
+    _write_mesh_tool(case_name, params.get("mesher", "gmsh"))
     
     # Run Gmsh
     gmsh_path = shutil.which("gmsh")
-    if gmsh_path:
+    if gmsh_path and params.get("mesher", "gmsh") == "gmsh":
         subprocess.run([
             "gmsh", "-3", "cylinder.geo", "-format", "msh2", "-o", "cylinder.msh"
         ], cwd=cwd, check=True, capture_output=True)
         _check_mesh_quality_gmsh(case_name, os.path.join(cwd, "cylinder.msh"), float(params["mesh"]))
-    else:
+    elif params.get("mesher", "gmsh") == "gmsh":
         print("  ❌ gmsh not found in PATH. Cannot generate mesh.")
 
     # Parallel Setup (Inject numberOfSubdomains)
@@ -699,7 +894,11 @@ def setup_case(params):
         if os.path.exists(decomp_path):
             with open(decomp_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
-            content = re.sub(r'numberOfSubdomains\s+\d+;', f'numberOfSubdomains {params["n_cpus"]};', content)
+            content = re.sub(
+                r'numberOfSubdomains\s+[\d.]+\s*;',
+                f'numberOfSubdomains {int(params["n_cpus"])};',
+                content,
+            )
             with open(decomp_path, 'w') as f:
                 f.write(content)
 
@@ -716,6 +915,9 @@ def setup_case(params):
         with open(control_path, 'w') as f:
             f.write(content)
     _patch_control_dict_for_speed(case_name, params)
+
+    # Persist build-time parameters for read-only usage during run.
+    _write_case_params(case_name, params)
         
     return case_name
 
@@ -723,48 +925,36 @@ def run_case_local(case_name, n_cpus=1):
     """Runs simulation locally."""
     _patch_alpha_water_bc(case_name)
     _ensure_functions_dict(case_name)
-    params = parse_case_params(case_name)
-    # Automatically extend cases built with old default (5.0s) to new default (50.0s)
-    # But respect any custom duration > 5.0 that the user might have set explicitly.
-    if abs(params["duration"] - 5.0) < 1e-6:
-         params["duration"] = DEFAULTS["duration"]
+    params = _load_case_params(case_name)
+    mesh_tool = _read_mesh_tool(case_name, default=params.get("mesher", "gmsh"))
     _patch_fvsolution_prefpoint(case_name, params)
     _patch_fvsolution_for_stability(case_name)
     shutil.copy2(os.path.join(TEMPLATE_DIR, "adaptive_stop.py"), os.path.join(case_name, "adaptive_stop.py"))
-    _patch_control_dict_for_speed(case_name, params)
-    # Check for existing progress
-    has_progress = os.path.isdir(os.path.join(case_name, "processor0"))
-    if not has_progress:
-        # Check for serial time folders (excluding '0')
-        time_folders = [d for d in os.listdir(case_name) if d.replace('.','',1).isdigit() and d != '0']
-        if time_folders:
-            has_progress = True
+    # Check for existing progress (non-zero time folders only)
+    has_progress = has_case_progress(case_name)
             
     if has_progress:
         print(f"  🏃 Resuming {case_name} (CPUs={n_cpus})...")
         subprocess.run(
-            ["make", "-C", case_name, "resume", f"N_CPUS={n_cpus}", "ADAPTIVE_STOP=1"],
+            ["make", "-C", case_name, "resume", f"N_CPUS={n_cpus}", f"MESH_TOOL={mesh_tool}", "ADAPTIVE_STOP=1"],
             check=True,
         )
     else:
         print(f"  🏃 Running {case_name} (CPUs={n_cpus})...")
         subprocess.run(
-            ["make", "-C", case_name, "run", f"N_CPUS={n_cpus}", "ADAPTIVE_STOP=1"],
+            ["make", "-C", case_name, "run", f"N_CPUS={n_cpus}", f"MESH_TOOL={mesh_tool}", "ADAPTIVE_STOP=1"],
             check=True,
         )
 
 def run_case_oscar(case_name, params, is_oscar):
     """Submits job to Slurm on Oscar."""
-    # Automatically extend cases built with old default (5.0s) to new default (50.0s)
-    if abs(params.get("duration", 5.0) - 5.0) < 1e-6:
-         params["duration"] = DEFAULTS["duration"]
     _patch_alpha_water_bc(case_name)
     _ensure_functions_dict(case_name)
     _patch_fvsolution_prefpoint(case_name, params)
     _patch_fvsolution_for_stability(case_name)
     shutil.copy2(os.path.join(TEMPLATE_DIR, "adaptive_stop.py"), os.path.join(case_name, "adaptive_stop.py"))
-    _patch_control_dict_for_speed(case_name, params)
     mem, time_limit, n_cells, _ = estimate_resources(params, case_dir=case_name)
+    mesh_tool = _read_mesh_tool(case_name, default=params.get("mesher", "gmsh"))
     
     # Read the ACTUAL number of subdomains from the case folder
     # This is the single source of truth for parallel runs
@@ -773,9 +963,9 @@ def run_case_oscar(case_name, params, is_oscar):
     if os.path.exists(decomp_path):
         with open(decomp_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
-            match = re.search(r'numberOfSubdomains\s+(\d+);', content)
+            match = re.search(r'numberOfSubdomains\s+([\d.]+)\s*;', content)
             if match:
-                n_cpus = int(match.group(1))
+                n_cpus = int(float(match.group(1)))
 
     slurm_dir = os.path.join(case_name, "slurm")
     os.makedirs(slurm_dir, exist_ok=True)
@@ -800,12 +990,24 @@ def run_case_oscar(case_name, params, is_oscar):
         f"echo 'Case: {case_name}'",
         "# Check if we are resuming (parallel processors or serial time folders existed)",
         f"cd {case_name}",
-        "if [ -d 'processor0' ] || (ls -d [0-9]* 2>/dev/null | grep -v '^0$' | grep -q .) ; then",
+        "has_progress=0",
+        "if (ls -d [0-9]* 2>/dev/null | grep -v '^0$' | grep -q .); then",
+        "    has_progress=1",
+        "else",
+        "    for p in processor*; do",
+        "        [ -d \"$p\" ] || continue",
+        "        if ls -d \"$p\"/[0-9]* 2>/dev/null | grep -v '/0$' | grep -q .; then",
+        "            has_progress=1",
+        "            break",
+        "        fi",
+        "    done",
+        "fi",
+        "if [ \"$has_progress\" -eq 1 ]; then",
         "    echo 'Found existing progress. Resuming simulation...'",
-        f"    make resume OSCAR=1 N_CPUS={n_cpus} ADAPTIVE_STOP=1",
+        f"    make resume OSCAR=1 N_CPUS={n_cpus} MESH_TOOL={mesh_tool} ADAPTIVE_STOP=1",
         "else",
         "    echo 'Starting fresh simulation...'",
-        f"    make run OSCAR=1 N_CPUS={n_cpus} ADAPTIVE_STOP=1",
+        f"    make run OSCAR=1 N_CPUS={n_cpus} MESH_TOOL={mesh_tool} ADAPTIVE_STOP=1",
         "fi",
         "echo 'End: $(date)'"
     ]
@@ -823,6 +1025,7 @@ PARAM_LABELS = {
     "H": "Height (m)",
     "D": "Diameter (m)",
     "mesh": "Mesh Size (m)",
+    "mesher": "Mesher",
     "geo": "Geometry",
     "tilt_deg": "Tilt Angle (deg)",
     "duration": "Duration (s)",
@@ -831,6 +1034,7 @@ PARAM_LABELS = {
 }
 
 GEO_OPTIONS = ["flat", "cap"]
+MESHER_OPTIONS = ["gmsh", "snappy"]
 
 def display_config(current_values, sweeps):
     """Displays the current configuration with any overrides."""
@@ -893,6 +1097,24 @@ def menu_build_cases(is_oscar):
                 else:
                     idx = int(geo_input) - 1
                     current_values[param] = GEO_OPTIONS[idx]
+                    if param in sweeps:
+                        del sweeps[param]
+            except (ValueError, IndexError):
+                print("  Invalid choice.")
+            continue
+
+        if param == 'mesher':
+            print(f"\n  Select mesher:")
+            for i, opt in enumerate(MESHER_OPTIONS):
+                print(f"    {i+1}) {opt}")
+            mesher_input = input("  Choice (or comma-separated for sweep, e.g., '1,2'): ").strip()
+            try:
+                if ',' in mesher_input:
+                    indices = [int(x.strip()) - 1 for x in mesher_input.split(',')]
+                    sweeps[param] = [MESHER_OPTIONS[i] for i in indices]
+                else:
+                    idx = int(mesher_input) - 1
+                    current_values[param] = MESHER_OPTIONS[idx]
                     if param in sweeps:
                         del sweeps[param]
             except (ValueError, IndexError):
@@ -998,12 +1220,9 @@ def menu_run_cases(is_oscar):
     # Display cases with status
     print("Available Cases:")
     for i, c in enumerate(cases):
-        # Try to infer duration from folder name (hacky, but works for now)
-        # Or assume default
-        done = is_case_done(c, DEFAULTS['duration'])
-        started = has_case_progress(c)
-        status = "(DONE)" if done else ("(STARTED)" if started else "")
-        print(f"  {i+1}) {c} {status}")
+        status = _get_case_status(c)
+        status_str = f"({status})" if status != "NEW" else ""
+        print(f"  {i+1}) {c} {status_str}")
     
     idx_str = input("\nEnter case indices to run (e.g., 1, 3-5, all): ").strip().lower()
     if idx_str == 'all':
@@ -1021,13 +1240,13 @@ def menu_run_cases(is_oscar):
     
     for i in indices:
         case_name = cases[i]
-        params = parse_case_params(case_name)
+        params = _load_case_params(case_name)
         
         if is_oscar:
             run_case_oscar(case_name, params, is_oscar)
         elif has_openfoam:
-            # Estimate resources to get n_cpus for local run
-            _, _, _, n_cpus = estimate_resources(params, case_dir=case_name)
+            # Honor the case's decomposeParDict (source of truth for parallel runs).
+            n_cpus = _read_n_cpus_from_decompose(case_name, default=1)
             run_case_local(case_name, n_cpus=n_cpus)
         else:
             print(f"  ❌ OpenFOAM not installed. Cannot run {case_name} locally.")

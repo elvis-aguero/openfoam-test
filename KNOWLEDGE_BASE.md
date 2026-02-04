@@ -53,6 +53,12 @@ Tiny elements (min edge length << target `lc`) can force extremely small adaptiv
 ### 8. Mesh Preflight Is Non-Blocking
 The build menu starts the Gmsh mesh-quality preflight in a background thread. It prints results when ready and does not delay case building; resource estimates use the analytic mesh estimate if the preflight hasn’t finished.
 
+### 9. Resume Detection Must Ignore Bare Processor Dirs
+`decomposePar` can create `processor*` directories before any time folders exist. Treating these as “progress” skips `setFields`, leaving `alpha.water` uniform 0. Resume detection should only trigger when non-zero time folders exist (serial or within processor directories).
+
+### 10. Persist Build Parameters (case_params.json)
+Case parameters are now written at build time to `case_params.json`. Run-time logic should read this file instead of inferring from the folder name, to avoid overwriting user-chosen `endTime` or other settings.
+
 ## 🏃 Current Workflow
 
 **Interactive Manager** (`python3 main.py`):

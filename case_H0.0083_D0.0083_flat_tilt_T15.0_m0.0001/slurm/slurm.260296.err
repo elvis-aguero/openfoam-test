@@ -1,0 +1,13 @@
+
+
+--> FOAM FATAL IO ERROR: 
+Cannot find patchField entry for background
+
+file: //work/0/alpha.water/boundaryField from line 20 to 33.
+
+    From function void Foam::GeometricBoundaryField<Type, GeoMesh, PrimitiveField>::readField(const Foam::DimensionedField<Type, GeoMesh, PrimitiveField>&, const Foam::dictionary&) [with Type = double; GeoMesh = Foam::volMesh; PrimitiveField = Foam::Field]
+    in file /home/ubuntu/OpenFOAM/OpenFOAM-13/src/OpenFOAM/lnInclude/GeometricBoundaryField.C at line 159.
+
+FOAM exiting
+
+make: *** [Makefile:87: run] Error 1

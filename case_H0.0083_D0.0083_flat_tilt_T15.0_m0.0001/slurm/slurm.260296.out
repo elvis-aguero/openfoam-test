@@ -1,0 +1,47 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 260296
+##  Job Name : case_H0.0083_D0.0083_flat_tilt_T15.0_m0.0001
+##  Nodelist : node2302
+##      CPUs : 4
+##  Mem/Node : 4096 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Tue Feb  3 12:36:00 PM EST 2026
+###############################################################################
+Case: case_H0.0083_D0.0083_flat_tilt_T15.0_m0.0001
+Starting fresh simulation...
+Mesh already exists; skipping mesh generation.
+# commands to be run in OpenFOAM environment
+of13  setFields
+/*---------------------------------------------------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  13
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+Build  : 13-cde978a97c93
+Exec   : setFields
+Date   : Feb 03 2026
+Time   : 12:36:02
+Host   : "node2302.oscar.ccv.brown.edu"
+PID    : 3219525
+I/O    : uncollated
+Case   : //work
+nProcs : 1
+sigFpe : Enabling floating point exception trapping (FOAM_SIGFPE).
+fileModificationChecking : Monitoring run-time modified files using timeStampMaster (fileModificationSkew 10)
+allowSystemOperations : Allowing user-supplied system call operations
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+Create time
+
+--> FOAM Warning : 
+    From function Foam::functionObjectList::functionObjectList(const Foam::Time&, bool)
+    in file db/functionObjects/functionObjectList/functionObjectList.C at line 253
+    Both "system/functions" and "system/controlDict/functions" found, the latter will be ignored.
+Create mesh for time = 0
+
+Reading "setFieldsDict"
+
+Setting field default values
+    Setting volScalarField::Internal alpha.water

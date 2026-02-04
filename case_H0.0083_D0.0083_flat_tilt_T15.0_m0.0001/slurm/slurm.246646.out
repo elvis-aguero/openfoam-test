@@ -1,0 +1,134 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 246646
+##  Job Name : case_H0.0083_D0.0083_flat_tilt_T15.0_m0.0001
+##  Nodelist : node2333
+##      CPUs : 4
+##  Mem/Node : 4096 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Mon Feb  2 05:23:53 PM EST 2026
+###############################################################################
+Case: case_H0.0083_D0.0083_flat_tilt_T15.0_m0.0001
+Starting fresh simulation...
+/*---------------------------------------------------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  13
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+Build  : 13-cde978a97c93
+Exec   : blockMesh
+Date   : Feb 02 2026
+Time   : 17:23:54
+Host   : "node2333.oscar.ccv.brown.edu"
+PID    : 90233
+I/O    : uncollated
+Case   : //work
+nProcs : 1
+sigFpe : Enabling floating point exception trapping (FOAM_SIGFPE).
+fileModificationChecking : Monitoring run-time modified files using timeStampMaster (fileModificationSkew 10)
+allowSystemOperations : Allowing user-supplied system call operations
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+Create time
+
+--> FOAM Warning : 
+    From function Foam::functionObjectList::functionObjectList(const Foam::Time&, bool)
+    in file db/functionObjects/functionObjectList/functionObjectList.C at line 253
+    Both "system/functions" and "system/controlDict/functions" found, the latter will be ignored.
+Reading "blockMeshDict"
+
+Creating block mesh from
+    "system/blockMeshDict"
+Creating block edges
+No non-planar block faces defined
+Creating topology blocks
+Creating topology patches
+
+Creating block mesh topology
+
+Basic statistics
+    Number of internal faces : 0
+    Number of boundary faces : 6
+    Number of defined boundary faces : 6
+    Number of undefined boundary faces : 0
+
+Checking topology
+Creating block offsets
+Creating merge list .
+
+Creating polyMesh from blockMesh
+Creating patches
+Creating cells
+Creating points with scale 1
+    Block 0 cell size :
+        i : 0.000202326
+        j : 0.000202326
+        k : 0.000197727 .. 0.000197727
+
+Writing polyMesh
+----------------
+Mesh Information
+----------------
+  boundingBox: (-0.00435 -0.00435 -0.0002) (0.00435 0.00435 0.0085)
+  nPoints: 87120
+  nCells: 81356
+  nFaces: 249701
+  nInternalFaces: 238435
+----------------
+Patches
+----------------
+  patch 0 (start: 238435 size: 11266) name: background
+
+End
+
+
+The surfaceFeatureExtract utility has been superseded and replaced by the more
+general surfaceFeatures utility.
+
+surfaceFeatures reads a surfaceFeaturesDict input file with a much
+simpler, more convenient format.  Example surfaceFeaturesDict files
+can be found in the tutorial and template cases, e.g. located as
+follows:
+find $FOAM_TUTORIALS -name surfaceFeaturesDict
+find $FOAM_ETC -name surfaceFeaturesDict
+
+/*---------------------------------------------------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  13
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+Build  : 13-cde978a97c93
+Exec   : snappyHexMesh -overwrite
+Date   : Feb 02 2026
+Time   : 17:23:57
+Host   : "node2333.oscar.ccv.brown.edu"
+PID    : 91541
+I/O    : uncollated
+Case   : //work
+nProcs : 1
+sigFpe : Enabling floating point exception trapping (FOAM_SIGFPE).
+fileModificationChecking : Monitoring run-time modified files using timeStampMaster (fileModificationSkew 10)
+allowSystemOperations : Allowing user-supplied system call operations
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+Create time
+
+--> FOAM Warning : 
+    From function Foam::functionObjectList::functionObjectList(const Foam::Time&, bool)
+    in file db/functionObjects/functionObjectList/functionObjectList.C at line 253
+    Both "system/functions" and "system/controlDict/functions" found, the latter will be ignored.
+Create mesh for time = 0
+
+Read mesh in = 0.050317 s
+Deprecated option 'overwrite' specified, this is now the default behaviour
+
+Reading "snappyHexMeshDict"
+
+
+Overall mesh bounding box  : (-0.00435 -0.00435 -0.0002) (0.00435 0.00435 0.0085)
+Relative tolerance         : 1e-06
+Absolute matching distance : 1.50688e-08
+

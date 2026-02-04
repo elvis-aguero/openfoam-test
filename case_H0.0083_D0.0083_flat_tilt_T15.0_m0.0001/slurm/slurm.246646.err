@@ -1,0 +1,13 @@
+
+
+--> FOAM FATAL IO ERROR: 
+keyword file is undefined in dictionary "//work/system/snappyHexMeshDict/cylinder.stl"
+
+file: //work/system/snappyHexMeshDict/cylinder.stl from line 23 to 30.
+
+    From function const Foam::entry& Foam::dictionary::lookupEntry(const Foam::word&, bool, bool) const
+    in file db/dictionary/dictionary.C at line 707.
+
+FOAM exiting
+
+make: *** [Makefile:67: mesh] Error 1
