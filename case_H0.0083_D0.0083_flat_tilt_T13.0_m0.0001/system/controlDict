@@ -22,7 +22,7 @@ startTime       0;
 
 stopAt          endTime;
 
-endTime 1;
+endTime 4;
 
 // Start with a conservative dt to avoid blowing up on the first step.
 // `maxDeltaT` still caps the growth (set via the manager's dt parameter).
@@ -51,10 +51,5 @@ adjustTimeStep  yes;
 maxCo           1.0;
 maxAlphaCo      0.5;
 maxDeltaT       0.001;
-
-functions
-{
-    #include "functions"
-}
 
 // ************************************************************************* //

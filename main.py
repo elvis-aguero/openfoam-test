@@ -1852,6 +1852,17 @@ def compare_interfaces(case_dir):
     openfoam_pts, t = _extract_openfoam_interface_latest(case_dir, results_dir)
 
     l2_info, n_samples = _compute_l2_between_interfaces(analytic_pts, openfoam_pts)
+    l2_rms_cap = ""
+    if l2_info and l2_info.get("l2_rms") is not None:
+        rho = _read_scalar_value(os.path.join(case_dir, "constant", "physicalProperties.water"), "rho", 1000.0)
+        sigma = _read_scalar_value(os.path.join(case_dir, "constant", "phaseProperties"), "sigma", 0.072)
+        gx, gy, gz = _read_g_vector(os.path.join(case_dir, "constant", "g"))
+        g_vertical = abs(gz) if abs(gz) > 1e-12 else math.sqrt(gx * gx + gy * gy + gz * gz)
+        if g_vertical <= 0:
+            g_vertical = 9.81
+        lc = math.sqrt(sigma / (rho * g_vertical)) if rho > 0 else 0.0
+        if lc > 0:
+            l2_rms_cap = l2_info["l2_rms"] / lc
 
     summary = [
         "metric,value",
@@ -1859,6 +1870,7 @@ def compare_interfaces(case_dir):
         f"analytical_area,{area}",
         f"analytical_hL,{hL}",
         f"l2_rms,{l2_info['l2_rms'] if l2_info else ''}",
+        f"l2_rms_capillary,{l2_rms_cap}",
         f"l2_sum,{l2_info['l2_sum'] if l2_info else ''}",
         f"num_samples,{n_samples}",
     ]
