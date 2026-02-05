@@ -838,10 +838,39 @@ def estimate_resources(params, case_dir=None, mesh_summary=None):
 def setup_case(params):
     """Creates the case directory and runs setup scripts."""
     case_name = get_case_name(params)
-    
+
+    def _params_equal(p1, p2):
+        try:
+            return json.dumps(p1, sort_keys=True) == json.dumps(p2, sort_keys=True)
+        except Exception:
+            return p1 == p2
+
+    def _case_params_match(case_dir):
+        path = os.path.join(case_dir, "case_params.json")
+        if not os.path.exists(path):
+            return False
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                existing = json.load(f)
+        except Exception:
+            return False
+        return _params_equal(existing, params)
+
     if os.path.exists(case_name):
-        print(f"  ⚠️  {case_name} already exists. Skipping.")
-        return case_name
+        if _case_params_match(case_name):
+            print(f"  ⚠️  {case_name} already exists with same params. Skipping.")
+            return case_name
+        # Find an available suffixed name
+        suffix = 1
+        while True:
+            candidate = f"{case_name}_{suffix}"
+            if not os.path.exists(candidate):
+                case_name = candidate
+                break
+            if _case_params_match(candidate):
+                print(f"  ⚠️  {candidate} already exists with same params. Skipping.")
+                return candidate
+            suffix += 1
     
     print(f"  📂 Creating: {case_name}")
     shutil.copytree(TEMPLATE_DIR, case_name)

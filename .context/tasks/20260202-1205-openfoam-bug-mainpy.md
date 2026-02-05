@@ -14,6 +14,7 @@ Diagnose and fix reported bug in `main.py` related to newly built OpenFOAM case.
 - Implement fix and validate with dry-run diagnostics only.
 
 ## Log
+- 2026-02-03: Build now skips only if case_params.json matches; otherwise creates a suffixed case name (_1, _2, ...).
 - 2026-02-03: Added capillary-length-normalized L2 RMS metric to interface comparison summary.
 - 2026-02-03: Added case status classification (NEW/UNFINISHED/FINISHED) based on latest time folders vs duration; menu now reflects accurate status.
 - 2026-02-03: Added case_params.json persistence and read-only param loading; run-time no longer overwrites controlDict based on name parsing. Menu status now uses persisted duration.

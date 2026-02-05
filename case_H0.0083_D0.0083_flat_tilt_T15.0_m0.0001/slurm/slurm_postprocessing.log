@@ -1,0 +1,21 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 278171
+##  Job Name : post_compare_case_H0.0083_D0.0083_flat_tilt_T15.0_m0.0001
+##  Nodelist : node2341
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Thu Feb  5 12:54:00 PM EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: compare | Case: case_H0.0083_D0.0083_flat_tilt_T15.0_m0.0001
+Date: $(date)
+Python: $(which python)
+[0m[33m2026-02-05 12:54:05.542 (   2.682s) [    7FD29CFC5240]  vtkOpenFOAMReader.cxx:9334  WARN| vtkOpenFOAMReaderPrivate (0x16a3330): boundaryField background not found in object U at time = 0[0m
+[0m[33m2026-02-05 12:54:05.546 (   2.686s) [    7FD29CFC5240]  vtkOpenFOAMReader.cxx:9334  WARN| vtkOpenFOAMReaderPrivate (0x16a3330): boundaryField background not found in object alpha.water at time = 0[0m
+[0m[33m2026-02-05 12:54:05.550 (   2.690s) [    7FD29CFC5240]  vtkOpenFOAMReader.cxx:9334  WARN| vtkOpenFOAMReaderPrivate (0x16a3330): boundaryField background not found in object p_rgh at time = 0[0m
+  📊 Comparing analytical and OpenFOAM interfaces for ....
+  ⚠️  OpenFOAM iso-surface has no points.
+  ⚠️  OpenFOAM interface not found; comparison summary saved anyway.
+End: $(date)
+------------------------------------------------------------

@@ -1,0 +1,8 @@
+metric,value
+openfoam_time,4.0
+analytical_area,5.518820175337797e-05
+analytical_hL,7.320938715450547e-07
+l2_rms,0.0008601909409391777
+l2_rms_capillary,0.31480929083309356
+l2_sum,0.10920021510393929
+num_samples,16116

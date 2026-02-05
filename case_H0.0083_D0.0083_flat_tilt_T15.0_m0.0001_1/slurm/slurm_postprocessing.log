@@ -1,0 +1,44 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 278172
+##  Job Name : post_compare_case_H0.0083_D0.0083_flat_tilt_T15.0_m0.0001_1
+##  Nodelist : node2343
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Thu Feb  5 12:54:00 PM EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: compare | Case: case_H0.0083_D0.0083_flat_tilt_T15.0_m0.0001_1
+Date: $(date)
+Python: $(which python)
+[0m[31m2026-02-05 12:54:05.787 (   2.671s) [    7F0AF2B10240]  vtkOpenFOAMReader.cxx:11615  ERR| vtkPOpenFOAMReader (0x1912c30): ./case.foam contains no meshes.[0m
+ERROR:root:./case.foam contains no meshes.
+[0m[31m2026-02-05 12:54:05.791 (   2.675s) [    7F0AF2B10240]       vtkExecutive.cxx:729    ERR| vtkCompositeDataPipeline (0x195b2a0): Algorithm vtkPOpenFOAMReader (0x1912c30) returned failure for request: vtkInformation (0x191f6e0)
+  Debug: Off
+  Modified Time: 6798
+  Reference Count: 1
+  Registered Events: (none)
+  Request: REQUEST_INFORMATION
+  ALGORITHM_AFTER_FORWARD: 1
+  FORWARD_DIRECTION: 0
+
+[0m
+ERROR:root:Algorithm vtkPOpenFOAMReader (0x1912c30) returned failure for request: vtkInformation (0x191f6e0)
+  📊 Comparing analytical and OpenFOAM interfaces for ....
+Traceback (most recent call last):
+  File "/oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/case_H0.0083_D0.0083_flat_tilt_T15.0_m0.0001_1/../main.py", line 2093, in <module>
+    compare_interfaces(args.case)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/case_H0.0083_D0.0083_flat_tilt_T15.0_m0.0001_1/../main.py", line 1881, in compare_interfaces
+    openfoam_pts, t = _extract_openfoam_interface_latest(case_dir, results_dir)
+                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/case_H0.0083_D0.0083_flat_tilt_T15.0_m0.0001_1/../main.py", line 1750, in _extract_openfoam_interface_latest
+    time_values = reader.time_values
+                  ^^^^^^^^^^^^^^^^^^
+  File "/oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/sloshing/lib/python3.13/site-packages/pyvista/core/utilities/reader.py", line 684, in time_values
+    return [self.time_point_value(idx) for idx in range(self.number_time_points)]
+                                                        ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/sloshing/lib/python3.13/site-packages/pyvista/core/utilities/reader.py", line 959, in number_time_points
+    return self.reader.GetTimeValues().GetNumberOfValues()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'GetNumberOfValues'

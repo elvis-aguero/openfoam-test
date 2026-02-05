@@ -1,0 +1,17 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 273185
+##  Job Name : post_compare_case_H0.0083_D0.0083_flat_tilt_T25.0_m0.0002
+##  Nodelist : node2333
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Wed Feb  4 03:18:27 PM EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: compare | Case: case_H0.0083_D0.0083_flat_tilt_T25.0_m0.0002
+Date: $(date)
+Python: $(which python)
+  📊 Comparing analytical and OpenFOAM interfaces for ....
+  ✅ Comparison complete.
+End: $(date)
+------------------------------------------------------------
