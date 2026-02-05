@@ -20,6 +20,7 @@ case_*/*
 !case_*/constant/
 !case_*/system/
 !case_*/postProcessing/
+!case_*/case_params.json
 
 # Track everything in those directories
 !case_*/slurm/*
