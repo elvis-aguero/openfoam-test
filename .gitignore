@@ -57,3 +57,4 @@ case_*/processor*/
 # HPC logs
 **/slurm/*.out
 **/slurm/*.err
+.aider*

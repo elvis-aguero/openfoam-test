@@ -140,6 +140,7 @@ DEFAULTS = {
     "tilt_deg": 5.0,
     "duration": 50.0,
     "dt": 0.1,
+    "contact_angle": 90.0,
     "n_cpus": 1,
 }
 
@@ -223,6 +224,36 @@ def _patch_alpha_water_bc(case_dir):
             if re.match(r"\s*type\s+", line):
                 prefix = re.match(r"^(\s*)", line).group(1)
                 out.append(f"{prefix}type            contactAngle;\n")
+                continue
+        out.append(line)
+    with open(path, "w") as f:
+        f.write("".join(out))
+
+def _set_contact_angle(case_dir, theta_deg):
+    path = os.path.join(case_dir, "0", "alpha.water")
+    if not os.path.exists(path):
+        return
+    try:
+        theta_val = float(theta_deg)
+    except Exception:
+        return
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        lines = f.readlines()
+    out = []
+    in_walls = False
+    for line in lines:
+        if re.match(r"\s*walls\s*\{", line):
+            in_walls = True
+            out.append(line)
+            continue
+        if in_walls:
+            if re.match(r"\s*\}", line):
+                in_walls = False
+                out.append(line)
+                continue
+            if re.match(r"\s*theta0\s+", line):
+                prefix = re.match(r"^(\s*)", line).group(1)
+                out.append(f"{prefix}theta0          {theta_val};\n")
                 continue
         out.append(line)
     with open(path, "w") as f:
@@ -883,6 +914,7 @@ def setup_case(params):
             os.chmod(os.path.join(root, f), 0o666)
 
     _patch_alpha_water_bc(case_name)
+    _set_contact_angle(case_name, params.get("contact_angle", DEFAULTS["contact_angle"]))
     _ensure_functions_dict(case_name)
     _patch_fvsolution_prefpoint(case_name, params)
     _patch_fvsolution_for_stability(case_name)
@@ -1059,6 +1091,7 @@ PARAM_LABELS = {
     "tilt_deg": "Tilt Angle (deg)",
     "duration": "Duration (s)",
     "dt": "Time Step (s)",
+    "contact_angle": "Contact Angle (deg)",
     "n_cpus": "Parallel CPUs (1=serial)",
 }
 
