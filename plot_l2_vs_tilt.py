@@ -122,6 +122,12 @@ def _parse_filters(raw_filters):
         filters.append((key, value))
     return filters
 
+def _format_filter_title(filters):
+    if not filters:
+        return ""
+    parts = [f"{key}={value}" for key, value in filters]
+    return " | filters: " + ", ".join(parts)
+
 def _get_x_value(params, case_dir, x_key):
     if params and x_key in params:
         return params.get(x_key)
@@ -181,7 +187,7 @@ def main():
     plt.plot(xs, ys, marker="o", linestyle="-")
     plt.xlabel(args.x)
     plt.ylabel(args.metric)
-    plt.title(f"{args.metric} vs {args.x}")
+    plt.title(f"{args.metric} vs {args.x}{_format_filter_title(filters)}")
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
 

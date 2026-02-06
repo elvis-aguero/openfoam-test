@@ -132,16 +132,16 @@ import tempfile
 TEMPLATE_DIR = "circularTiltingTank"
 VIDEO_FPS = 30
 DEFAULTS = {
-    "H": 0.01,
+    "H": 0.0083,
     "D": 0.0083,
     "mesh": 0.0005,
-    "mesher": "gmsh",
+    "mesher": "snappy",
     "geo": "flat",
     "tilt_deg": 5.0,
-    "duration": 50.0,
+    "duration": 5.0,
     "dt": 0.1,
     "contact_angle": 90.0,
-    "n_cpus": 1,
+    "n_cpus": 4,
 }
 
 # --- Utility Functions ---
