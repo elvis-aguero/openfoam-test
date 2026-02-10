@@ -15,3 +15,36 @@ Python: $(which python)
   ✅ Comparison complete.
 End: $(date)
 ------------------------------------------------------------
+## SLURM PROLOG ###############################################################
+##    Job ID : 332632
+##  Job Name : post_compare_case_H0.0083_D0.0083_flat_tilt_T26.0_m0.0001
+##  Nodelist : node2334
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Tue Feb 10 07:56:58 AM EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: compare | Case: case_H0.0083_D0.0083_flat_tilt_T26.0_m0.0001
+Date: $(date)
+Python: $(which python)
+  📊 Comparing analytical and OpenFOAM interfaces for ....
+  ✅ Comparison complete.
+/usr/bin/xvfb-run: line 186: kill: (2400707) - No such process
+## SLURM PROLOG ###############################################################
+##    Job ID : 332674
+##  Job Name : post_compare_case_H0.0083_D0.0083_flat_tilt_T26.0_m0.0001
+##  Nodelist : node2334
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Tue Feb 10 08:18:43 AM EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: compare | Case: case_H0.0083_D0.0083_flat_tilt_T26.0_m0.0001
+Date: $(date)
+Python: $(which python)
+  📊 Comparing analytical and OpenFOAM interfaces for ....
+  ✅ Comparison complete.
+End: $(date)
+------------------------------------------------------------

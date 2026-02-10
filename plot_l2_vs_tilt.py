@@ -1,4 +1,31 @@
 #!/usr/bin/env python3
+"""
+Summarize interface-comparison error across OpenFOAM cases and plot it vs. a parameter.
+
+This script scans case directories named like `case_*` in the current working directory,
+collects a metric (default: `l2_rms`) from each case's
+`postProcessing/interface_compare/comparison_summary.csv`, and plots it against a chosen
+parameter from `case_params.json` (or the tilt angle inferred from the case name).
+
+Typical usage:
+  python3 plot_l2_vs_tilt.py --x tilt_deg
+  python3 plot_l2_vs_tilt.py --x T --filter H=0.0083 --filter mesher=snappy
+  python3 plot_l2_vs_tilt.py --x tilt_deg --metric l2_rms_capillary
+
+Inputs expected per case:
+  - `case_params.json`: top-level keys are available for `--x` and `--filter`.
+  - `postProcessing/interface_compare/comparison_summary.csv`: key/value pairs such as
+    `l2_rms` produced by the interface comparison step in this project.
+
+Outputs:
+  - CSV: `postProcessing/l2_rms_vs_x.csv` (or `--out-prefix` + `.csv`)
+  - PNG: `postProcessing/l2_rms_vs_x.png` (if matplotlib is available)
+
+Notes:
+  - `--x tilt_deg` uses `case_params.json["tilt_deg"]` if present, otherwise parses
+    the value from the case directory name pattern `_tilt_T{tilt}`.
+  - Rows with missing parameters or missing metric values are skipped.
+"""
 import argparse
 import csv
 import glob

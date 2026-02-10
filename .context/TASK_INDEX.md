@@ -8,3 +8,5 @@
 | 20260206-1510-mainpy-defaults | Update main.py defaults | open | local | main | 2026-02-06 |
 | 20260206-1515-plt-tilt-title | Add filter values to plot title in plt_tilt.py | open | local | main | 2026-02-06 |
 | 20260206-1525-video-check | Verify video generation via job submission | open | local | main | 2026-02-06 |
+| 20260210-1100-plot-l2-rms-docstring | Improve plot_l2_rms.py docstring | open | local | main | 2026-02-10 |
+| 20260210-1105-plot-l2-usage | Explain plot_l2_vs_tilt usage/results | open | local | main | 2026-02-10 |
