@@ -211,11 +211,24 @@ def _patch_alpha_water_bc(case_dir):
         return
     out = []
     in_walls = False
+    pending_walls = False
     for line in lines:
         if re.match(r"\s*walls\s*\{", line):
             in_walls = True
+            pending_walls = False
             out.append(line)
             continue
+        if re.match(r"\s*walls\s*$", line):
+            pending_walls = True
+            out.append(line)
+            continue
+        if pending_walls and re.match(r"\s*\{", line):
+            in_walls = True
+            pending_walls = False
+            out.append(line)
+            continue
+        if pending_walls and not re.match(r"\s*$", line):
+            pending_walls = False
         if in_walls:
             if re.match(r"\s*\}", line):
                 in_walls = False
@@ -241,11 +254,24 @@ def _set_contact_angle(case_dir, theta_deg):
         lines = f.readlines()
     out = []
     in_walls = False
+    pending_walls = False
     for line in lines:
         if re.match(r"\s*walls\s*\{", line):
             in_walls = True
+            pending_walls = False
             out.append(line)
             continue
+        if re.match(r"\s*walls\s*$", line):
+            pending_walls = True
+            out.append(line)
+            continue
+        if pending_walls and re.match(r"\s*\{", line):
+            in_walls = True
+            pending_walls = False
+            out.append(line)
+            continue
+        if pending_walls and not re.match(r"\s*$", line):
+            pending_walls = False
         if in_walls:
             if re.match(r"\s*\}", line):
                 in_walls = False
@@ -268,19 +294,20 @@ def _write_functions_dict(case_dir, params):
     D = float(params.get("D", DEFAULTS["D"]))
     R = 0.5 * D
 
-    # Probe points inside the cylinder.
-    # Bias sampling around the expected interface height (~H/2) so we can detect
-    # interface stillness (alpha stops changing), not just small velocities.
-    thetas = [0.0, 0.5 * math.pi, math.pi, 1.5 * math.pi]
-    r_ring = 0.45 * R
+    # Dense near-wall probes (20 azimuthal columns x 5 z-levels = 100 probes).
+    # This improves interface height min/max estimates while keeping I/O manageable.
+    n_azimuth = 20
+    thetas = [(2.0 * math.pi * i) / n_azimuth for i in range(n_azimuth)]
+    r_ring = 0.48 * R
 
     points = []
-    z_levels = [0.25 * H, 0.45 * H, 0.5 * H, 0.55 * H, 0.75 * H]
-    for z in z_levels:
-        zc = min(max(z, 0.05 * H), 0.95 * H)
-        points.append((0.0, 0.0, zc))
-        for th in thetas:
-            points.append((r_ring * math.cos(th), r_ring * math.sin(th), zc))
+    z_levels = [0.1 * H, 0.3 * H, 0.5 * H, 0.7 * H, 0.9 * H]
+    for th in thetas:
+        x = r_ring * math.cos(th)
+        y = r_ring * math.sin(th)
+        for z in z_levels:
+            zc = min(max(z, 0.05 * H), 0.95 * H)
+            points.append((x, y, zc))
 
     functions_path = os.path.join(case_dir, "system", "functions")
     content = [
@@ -378,7 +405,7 @@ def _patch_control_dict_for_speed(case_dir, params):
     # Ensure we always write something even if we stop early (and keep I/O low).
     # `stopAt writeNow` will still force a final write at steady state.
     duration = float(params.get("duration", DEFAULTS["duration"]))
-    write_interval = 0.25
+    write_interval = 0.1
     content = re.sub(r'(^\s*endTime\s+)[^;]+;', r'\g<1>' + f"{duration:g}" + ';', content, flags=re.M)
     content = re.sub(r'(^\s*writeControl\s+)[^;]+;', r'\g<1>adjustableRunTime;', content, flags=re.M)
     content = re.sub(r'(^\s*writeInterval\s+)[^;]+;', r'\g<1>' + f"{write_interval:g}" + ';', content, flags=re.M)
@@ -1604,14 +1631,50 @@ def generate_lateral_video(case_dir):
                 else:
                     internal_mesh = mesh
                 
-                # 1. Interface (alpha.water = 0.5)
+                # 1. Semi-transparent water phase colored by |U|
                 if 'alpha.water' in internal_mesh.cell_data:
-                    mesh_point = internal_mesh.cell_data_to_point_data()
                     try:
-                        iso = mesh_point.contour(isosurfaces=[0.5], scalars='alpha.water')
-                        plotter.add_mesh(iso, color='blue', opacity=0.9, smooth_shading=True, lighting=True)
-                    except:
-                        pass # Isosurface might fail if alpha is all 0 or 1
+                        water = internal_mesh.threshold(
+                            value=0.5,
+                            scalars='alpha.water',
+                            preference='cell',
+                        )
+
+                        if water.n_cells > 0:
+                            speed_name = 'U_mag'
+                            if 'U' in water.cell_data:
+                                u = np.asarray(water.cell_data['U'])
+                                if u.ndim == 2 and u.shape[1] >= 3:
+                                    water.cell_data[speed_name] = np.linalg.norm(u[:, :3], axis=1)
+                                elif u.ndim == 1:
+                                    water.cell_data[speed_name] = np.abs(u)
+                            elif 'U' in water.point_data:
+                                u = np.asarray(water.point_data['U'])
+                                if u.ndim == 2 and u.shape[1] >= 3:
+                                    water.point_data[speed_name] = np.linalg.norm(u[:, :3], axis=1)
+                                elif u.ndim == 1:
+                                    water.point_data[speed_name] = np.abs(u)
+
+                            if speed_name in water.cell_data or speed_name in water.point_data:
+                                plotter.add_mesh(
+                                    water,
+                                    scalars=speed_name,
+                                    cmap='viridis',
+                                    opacity=0.35,
+                                    lighting=True,
+                                    show_scalar_bar=True,
+                                    scalar_bar_args={'title': '|U| (m/s)'},
+                                )
+                            else:
+                                # Fallback if velocity is unavailable in the dataset.
+                                plotter.add_mesh(
+                                    water,
+                                    color='steelblue',
+                                    opacity=0.35,
+                                    lighting=True,
+                                )
+                    except Exception:
+                        pass
                 
                 # 2. Tank outline (wireframe)
                 plotter.add_mesh(internal_mesh.outline(), color='black')
@@ -1915,6 +1978,18 @@ def compare_interfaces(case_dir):
 
     l2_info, n_samples = _compute_l2_between_interfaces(analytic_pts, openfoam_pts)
     l2_rms_cap = ""
+    l2_rms_over_undisturbed_area = ""
+    undisturbed_area = ""
+
+    params = _load_case_params(case_dir)
+    d_val = params.get("D", DEFAULTS["D"])
+    try:
+        r0 = 0.5 * float(d_val)
+        if r0 > 0:
+            undisturbed_area = math.pi * r0 * r0
+    except Exception:
+        undisturbed_area = ""
+
     if l2_info and l2_info.get("l2_rms") is not None:
         rho = _read_scalar_value(os.path.join(case_dir, "constant", "physicalProperties.water"), "rho", 1000.0)
         sigma = _read_scalar_value(os.path.join(case_dir, "constant", "phaseProperties"), "sigma", 0.072)
@@ -1925,13 +2000,17 @@ def compare_interfaces(case_dir):
         lc = math.sqrt(sigma / (rho * g_vertical)) if rho > 0 else 0.0
         if lc > 0:
             l2_rms_cap = l2_info["l2_rms"] / lc
+        if undisturbed_area not in ("", 0):
+            l2_rms_over_undisturbed_area = l2_info["l2_rms"] / undisturbed_area
 
     summary = [
         "metric,value",
         f"openfoam_time,{t if t is not None else ''}",
+        f"undisturbed_interface_area,{undisturbed_area}",
         f"analytical_area,{area}",
         f"analytical_hL,{hL}",
         f"l2_rms,{l2_info['l2_rms'] if l2_info else ''}",
+        f"l2_rms_over_undisturbed_area,{l2_rms_over_undisturbed_area}",
         f"l2_rms_capillary,{l2_rms_cap}",
         f"l2_sum,{l2_info['l2_sum'] if l2_info else ''}",
         f"num_samples,{n_samples}",
@@ -1966,6 +2045,7 @@ def menu_postprocess(is_oscar):
     print("Select Action:")
     print("  1) Compare Interfaces (Analytical vs OpenFOAM)")
     print("  2) Generate Lateral View Video")
+    print("  3) Extract OpenFOAM Interface")
     print("  Q) Back to Main Menu")
     print("-"*60)
     
@@ -2016,6 +2096,28 @@ def menu_postprocess(is_oscar):
                             run_postprocess_oscar(cases[idx], "video")
                         return
             generate_lateral_video(cases[i])
+    elif choice == '3':
+        print("\n→ Extract OpenFOAM Interface")
+        idx_str = input("  Enter case numbers (e.g., 1, 3-5, all): ").strip().lower()
+        if idx_str == 'all':
+            indices = list(range(len(cases)))
+        else:
+            indices = parse_indices(idx_str, len(cases))
+
+        if not indices:
+            print("No valid indices selected.")
+            return
+
+        print(f"\nExtracting interfaces for {len(indices)} case(s)...")
+        for i in indices:
+            if is_oscar:
+                if i == indices[0]:
+                    submit = input("\n⚠️  Post-processing detected. Submit as Slurm job? (y/n): ").strip().lower()
+                    if submit == 'y':
+                        for idx in indices:
+                            run_postprocess_oscar(cases[idx], "extract")
+                        return
+            extract_interface(cases[i])
     elif choice == 'q':
         return
 
@@ -2113,7 +2215,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--headless", action="store_true", help="Run without menu")
     parser.add_argument("--case", type=str, help="Case directory for headless mode")
-    parser.add_argument("--action", type=str, choices=["compare", "video"], help="Action for headless mode")
+    parser.add_argument("--action", type=str, choices=["compare", "video", "extract"], help="Action for headless mode")
     
     args = parser.parse_args()
     
@@ -2126,5 +2228,7 @@ if __name__ == "__main__":
             compare_interfaces(args.case)
         elif args.action == "video":
             generate_lateral_video(args.case)
+        elif args.action == "extract":
+            extract_interface(args.case)
     else:
         main_menu()

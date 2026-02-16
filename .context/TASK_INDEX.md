@@ -10,3 +10,8 @@
 | 20260206-1525-video-check | Verify video generation via job submission | open | local | main | 2026-02-06 |
 | 20260210-1100-plot-l2-rms-docstring | Improve plot_l2_rms.py docstring | open | local | main | 2026-02-10 |
 | 20260210-1105-plot-l2-usage | Explain plot_l2_vs_tilt usage/results | open | local | main | 2026-02-10 |
+
+| 20260211-1100-codex-install-update | Determine Codex install location and update steps on Oscar | done | local | main | 2026-02-11 |
+| 20260212-1505-theta-build-enforcement | Verify non-90 theta0 in dry build and enforce in build logic | done | local | main | 2026-02-12 |
+| 20260213-1200-adaptive-csv-and-quiet-logs | Add adaptive CSV metrics and reduce .out verbosity | open | local | main | 2026-02-13 |
+| 20260213-1400-t0-theta115-oscillation-diagnosis | Diagnose non-steady oscillations in T0.0 theta0=115 run | open | local | main | 2026-02-13 |
