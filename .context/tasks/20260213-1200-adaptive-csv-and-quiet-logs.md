@@ -81,3 +81,9 @@ When running built cases, emit a CSV with timestamp, normU, maxDeltaAlpha, inter
 - 2026-02-16: Added helper `_load_build_values_from_case(case_dir)` to merge source case parameters over `DEFAULTS` with categorical normalization (`geo`, `mesher`).
 - 2026-02-16: Copy action resets sweep overrides and returns user to normal tweak flow; syntax check passed (`python3 -m py_compile main.py`).
 - 2026-02-16: Performed non-destructive interactive dry run of new build-menu `copy` feature (`main.py`): selected source case by name, verified config values were loaded, then canceled before build.
+- 2026-02-16: Added adaptive-stop convergence plotting in `circularTiltingTank/adaptive_stop.py`: writes `convergence_summary.png` next to adaptive CSV (`postProcessing/adaptive_stop/`), with one subplot per metric column.
+- 2026-02-16: Plot generation is non-fatal (safe fallback when plotting dependencies or data are unavailable) and runs at adaptive-stop completion.
+- 2026-02-16: Validated with `python3 -m py_compile circularTiltingTank/adaptive_stop.py` and smoke-tested figure generation to `/tmp/convergence_summary_test.png`.
+- 2026-02-16: Updated `interface_contact_angle_snapshot_latest.png` profile-axis normalization in `main.py`: left subplot now plots `(zeta_wall - z_still) / D`, where `z_still=H/2` from case parameters and `D` is case diameter (fallback `2*R_target`).
+- 2026-02-16: Added zero-reference guide line (`y=0`) to the profile panel to make positive/negative deviations from still level explicit.
+- 2026-02-16: Syntax validation passed after update: `python3 -m py_compile main.py`.

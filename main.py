@@ -1878,13 +1878,25 @@ def extract_interface(case_dir, vtp_mode="none", quality_profile="balanced"):
 
     # Latest-snapshot contact-angle diagnostics (100 boundary samples + box plot).
     if latest_interface_pts is not None and len(latest_interface_pts) > 0:
+        still_level = None
+        diameter = None
         try:
             params = _load_case_params(case_dir)
             theta_nominal = params.get("contact_angle", None)
             if theta_nominal is not None:
                 theta_nominal = float(theta_nominal)
+            H_val = params.get("H", None)
+            if H_val is not None:
+                still_level = 0.5 * float(H_val)
+            D_val = params.get("D", None)
+            if D_val is not None:
+                D_float = float(D_val)
+                if D_float > 0.0:
+                    diameter = D_float
         except Exception:
             theta_nominal = None
+        if diameter is None and R_target is not None:
+            diameter = 2.0 * float(R_target)
 
         angle_rows, angle_meta = _estimate_contact_angles_on_boundary(
             latest_interface_pts,
@@ -1899,6 +1911,8 @@ def extract_interface(case_dir, vtp_mode="none", quality_profile="balanced"):
             angle_rows,
             theta_nominal_deg=theta_nominal,
             thresholds=angle_meta,
+            diameter=diameter,
+            still_level=still_level,
         )
         print("  ✅ Saved contact-angle diagnostics (CSV + quality report + boxplot).")
     else:
@@ -2345,6 +2359,8 @@ def _write_contact_angle_snapshot_outputs(
     rows,
     theta_nominal_deg=None,
     thresholds=None,
+    diameter=None,
+    still_level=None,
 ):
     import numpy as np
 
@@ -2563,25 +2579,49 @@ def _write_contact_angle_snapshot_outputs(
 
         theta_deg = np.asarray([r["theta_deg"] for r in rows_sorted], dtype=float)
         zeta = np.asarray([r["zeta_wall"] for r in rows_sorted], dtype=float)
+        zeta_plot = zeta.copy()
+        zeta_ylabel = "interface height zeta at wall (m)"
+        if diameter is not None:
+            try:
+                dval = float(diameter)
+            except Exception:
+                dval = 0.0
+            if dval > 0.0:
+                zref = 0.0
+                try:
+                    if still_level is not None and np.isfinite(float(still_level)):
+                        zref = float(still_level)
+                except Exception:
+                    zref = 0.0
+                zeta_plot = (zeta - zref) / dval
+                zeta_ylabel = "(zeta_wall - z_still) / D"
         tiers = [r["quality_tier"] for r in rows_sorted]
         angle = np.asarray([r["contact_angle_deg"] for r in rows_sorted], dtype=float)
         color_by_tier = {"high": "#2a9d8f", "medium": "#f4a261", "low": "#e76f51", "invalid": "#7f8c8d"}
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11.5, 4.8), constrained_layout=True)
 
-        valid_profile = np.isfinite(theta_deg) & np.isfinite(zeta)
+        valid_profile = np.isfinite(theta_deg) & np.isfinite(zeta_plot)
         if np.any(valid_profile):
-            ax1.plot(theta_deg[valid_profile], zeta[valid_profile], color="#1d3557", lw=1.2, alpha=0.6)
+            ax1.plot(theta_deg[valid_profile], zeta_plot[valid_profile], color="#1d3557", lw=1.2, alpha=0.6)
             for tier_name in ("high", "medium", "low", "invalid"):
                 m = np.asarray(
                     [valid_profile[j] and tiers[j] == tier_name for j in range(len(rows_sorted))],
                     dtype=bool,
                 )
                 if np.any(m):
-                    ax1.scatter(theta_deg[m], zeta[m], s=10, alpha=0.8, color=color_by_tier[tier_name], label=tier_name)
+                    ax1.scatter(
+                        theta_deg[m],
+                        zeta_plot[m],
+                        s=10,
+                        alpha=0.8,
+                        color=color_by_tier[tier_name],
+                        label=tier_name,
+                    )
         ax1.set_xlabel("theta (deg)")
-        ax1.set_ylabel("interface height zeta at wall (m)")
+        ax1.set_ylabel(zeta_ylabel)
         ax1.set_title("Wall Interface Profile (latest snapshot)")
+        ax1.axhline(0.0, color="black", lw=0.8, alpha=0.35)
         ax1.grid(True, alpha=0.25)
         ax1.legend(loc="best", fontsize=8)
 

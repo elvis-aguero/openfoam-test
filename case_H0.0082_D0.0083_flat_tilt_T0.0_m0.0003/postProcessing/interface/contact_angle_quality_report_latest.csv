@@ -1,10 +1,10 @@
 rule,threshold,count,fraction
 sparse_local,n_points<8 or n_unique_r<4 or r_span<0.0025*R,100,1.0
 ill_conditioned,fit_cond>10000000000.0,0,0.0
-wide_ci,ci_width_deg>35.0,44,0.44
-model_mismatch,model_diff_deg>12.0,8,0.08
-fallback_used,estimator_source=global_periodic_fallback,55,0.55
+wide_ci,ci_width_deg>35.0,39,0.39
+model_mismatch,model_diff_deg>12.0,6,0.06
+fallback_used,estimator_source=global_periodic_fallback,61,0.61
 tier_high,quality_tier=high,0,0.0
-tier_medium,quality_tier=medium,56,0.56
-tier_low,quality_tier=low,44,0.44
+tier_medium,quality_tier=medium,61,0.61
+tier_low,quality_tier=low,39,0.39
 tier_invalid,quality_tier=invalid,0,0.0

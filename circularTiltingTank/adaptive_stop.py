@@ -259,6 +259,107 @@ def _append_metrics_row(csv_path, row):
         )
 
 
+def _to_float_or_nan(value):
+    try:
+        if value is None:
+            return float("nan")
+        text = str(value).strip()
+        if not text or text.lower() == "nan":
+            return float("nan")
+        return float(text)
+    except Exception:
+        return float("nan")
+
+
+def _write_convergence_summary_figure(csv_path, fig_path):
+    """
+    Create a convergence summary figure with one subplot per metric column.
+    Returns True on success, False otherwise.
+    """
+    if not os.path.exists(csv_path):
+        return False
+
+    try:
+        with open(csv_path, "r", encoding="utf-8", errors="ignore") as handle:
+            reader = csv.DictReader(handle)
+            fieldnames = reader.fieldnames or []
+            rows = list(reader)
+    except Exception:
+        return False
+
+    if not rows or not fieldnames:
+        return False
+
+    x_key = "timestamp" if "timestamp" in fieldnames else fieldnames[0]
+    metric_keys = [k for k in fieldnames if k != x_key]
+    if not metric_keys:
+        return False
+
+    x_values = []
+    for i, row in enumerate(rows):
+        x_val = _to_float_or_nan(row.get(x_key))
+        if not math.isfinite(x_val):
+            x_val = float(i)
+        x_values.append(x_val)
+
+    # Matplotlib is optional; plotting should never break adaptive stopping.
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception:
+        return False
+
+    n_metrics = len(metric_keys)
+    n_cols = 1 if n_metrics == 1 else 2
+    n_rows = int(math.ceil(n_metrics / n_cols))
+    fig, axes = plt.subplots(
+        n_rows,
+        n_cols,
+        figsize=(6.2 * n_cols, 2.8 * n_rows),
+        squeeze=False,
+        sharex=True,
+        constrained_layout=True,
+    )
+    axes_flat = [ax for row_axes in axes for ax in row_axes]
+
+    for i, key in enumerate(metric_keys):
+        ax = axes_flat[i]
+        y_values = [_to_float_or_nan(row.get(key)) for row in rows]
+        xs = []
+        ys = []
+        for x, y in zip(x_values, y_values):
+            if math.isfinite(x) and math.isfinite(y):
+                xs.append(x)
+                ys.append(y)
+
+        if xs:
+            ax.plot(xs, ys, "-", linewidth=1.5, color="#1f77b4")
+            ax.scatter(xs, ys, s=8, color="#1f77b4", alpha=0.6)
+        else:
+            ax.text(0.5, 0.5, "No finite data", ha="center", va="center", transform=ax.transAxes)
+
+        ax.set_ylabel(key)
+        ax.grid(True, alpha=0.25)
+
+    for j in range(n_metrics, len(axes_flat)):
+        axes_flat[j].axis("off")
+
+    for ax in axes[-1]:
+        if ax.get_visible():
+            ax.set_xlabel(x_key)
+
+    fig.suptitle("Adaptive Stop Convergence Summary")
+    out_dir = os.path.dirname(fig_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    try:
+        fig.savefig(fig_path, dpi=150)
+        return True
+    finally:
+        plt.close(fig)
+
+
 def _scan_solver_log(log_path, state, metrics):
     """
     Parse newly appended solver log text and cache latest runtime metrics.
@@ -575,6 +676,12 @@ def main():
             update_control_dict(stop_at="endTime", end_time=final_time_str)
         else:
             update_control_dict(stop_at="endTime")
+
+    if csv_enabled:
+        fig_dir = os.path.dirname(csv_path) or "."
+        fig_path = os.path.join(fig_dir, "convergence_summary.png")
+        if _write_convergence_summary_figure(csv_path, fig_path):
+            print(f"Adaptive stop: convergence figure -> {fig_path}")
 
     return return_code
 
