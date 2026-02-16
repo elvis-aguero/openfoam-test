@@ -18,3 +18,39 @@ Python: $(which python)
       ✅ Saved: video_lateral.mp4
 End: $(date)
 ------------------------------------------------------------
+## SLURM PROLOG ###############################################################
+##    Job ID : 382598
+##  Job Name : post_video_case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0003
+##  Nodelist : node2338
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Sun Feb 15 09:33:00 PM EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: video | Case: case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0003
+Date: $(date)
+Python: $(which python)
+## SLURM PROLOG ###############################################################
+##    Job ID : 382600
+##  Job Name : post_compare_case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0003
+##  Nodelist : node2338
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Sun Feb 15 09:33:14 PM EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: compare | Case: case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0003
+Date: $(date)
+Python: $(which python)
+  🎬 Generating lateral video for ....
+    - Target video path: /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0003/postProcessing/video_lateral.mp4
+    - Processing 21 frames...
+      Rendered 20/21
+      ✅ Saved: video_lateral.mp4
+End: $(date)
+------------------------------------------------------------
+  📊 Comparing analytical and OpenFOAM interfaces for ....
+  ✅ Comparison complete.
+/usr/bin/xvfb-run: line 186: kill: (1764027) - No such process

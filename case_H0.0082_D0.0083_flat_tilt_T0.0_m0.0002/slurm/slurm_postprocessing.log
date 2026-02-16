@@ -19,3 +19,34 @@ Python: $(which python)
       ✅ Saved: video_lateral.mp4
 End: $(date)
 ------------------------------------------------------------
+## SLURM PROLOG ###############################################################
+##    Job ID : 382597
+##  Job Name : post_video_case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0002
+##  Nodelist : node2334
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Sun Feb 15 09:33:00 PM EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: video | Case: case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0002
+Date: $(date)
+Python: $(which python)
+  🎬 Generating lateral video for ....
+    - Target video path: /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0002/postProcessing/video_lateral.mp4
+    - Processing 51 frames...
+      Rendered 20/51
+      Rendered 40/51
+      ✅ Saved: video_lateral.mp4
+st
+##   Job Started : Sun Feb 15 09:33:14 PM EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: compare | Case: case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0002
+Date: $(date)
+Python: $(which python)
+  📊 Comparing analytical and OpenFOAM interfaces for ....
+  ✅ Comparison complete.
+/usr/bin/xvfb-run: line 186: kill: (1764028) - No such process
+End: $(date)
+------------------------------------------------------------

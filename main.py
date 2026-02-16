@@ -1605,14 +1605,20 @@ def generate_lateral_video(case_dir):
     bounds = internal_mesh.bounds # (xmin, xmax, ymin, ymax, zmin, zmax)
     center = [(bounds[0]+bounds[1])/2, (bounds[2]+bounds[3])/2, (bounds[4]+bounds[5])/2]
     
-    # Camera setup: Side view (Look from -Y towards +Y)
-    # Position: x=center, y=negative large, z=center
+    # Camera setup: oblique perspective (improves depth cues vs pure side view)
     span = max(bounds[1]-bounds[0], bounds[3]-bounds[2], bounds[5]-bounds[4])
-    camera_pos = [center[0], bounds[2] - span*2.5, center[2]]
+    z_span = max(bounds[5] - bounds[4], 1e-9)
+    camera_pos = [
+        center[0] + 1.3 * span,
+        center[1] - 1.8 * span,
+        center[2] + 0.9 * span,
+    ]
+    camera_focus = [center[0], center[1], center[2] + 0.1 * z_span]
     
     plotter.camera.position = camera_pos
-    plotter.camera.focal_point = center
+    plotter.camera.focal_point = camera_focus
     plotter.camera.up = (0, 0, 1)
+    plotter.camera.view_angle = 28.0
     
     print(f"    - Target video path: {os.path.abspath(video_path)}")
     print(f"    - Processing {len(time_values)} frames...")
@@ -1631,55 +1637,49 @@ def generate_lateral_video(case_dir):
                 else:
                     internal_mesh = mesh
                 
-                # 1. Semi-transparent water phase colored by |U|
+                # Keep camera fixed after clear() so every frame uses the same perspective.
+                plotter.camera.position = camera_pos
+                plotter.camera.focal_point = camera_focus
+                plotter.camera.up = (0, 0, 1)
+                plotter.camera.view_angle = 28.0
+
+                # 1) Interface surface (alpha.water = 0.5), rendered as smooth geometry.
                 if 'alpha.water' in internal_mesh.cell_data:
                     try:
-                        water = internal_mesh.threshold(
-                            value=0.5,
-                            scalars='alpha.water',
-                            preference='cell',
-                        )
-
-                        if water.n_cells > 0:
-                            speed_name = 'U_mag'
-                            if 'U' in water.cell_data:
-                                u = np.asarray(water.cell_data['U'])
-                                if u.ndim == 2 and u.shape[1] >= 3:
-                                    water.cell_data[speed_name] = np.linalg.norm(u[:, :3], axis=1)
-                                elif u.ndim == 1:
-                                    water.cell_data[speed_name] = np.abs(u)
-                            elif 'U' in water.point_data:
-                                u = np.asarray(water.point_data['U'])
-                                if u.ndim == 2 and u.shape[1] >= 3:
-                                    water.point_data[speed_name] = np.linalg.norm(u[:, :3], axis=1)
-                                elif u.ndim == 1:
-                                    water.point_data[speed_name] = np.abs(u)
-
-                            if speed_name in water.cell_data or speed_name in water.point_data:
-                                plotter.add_mesh(
-                                    water,
-                                    scalars=speed_name,
-                                    cmap='viridis',
-                                    opacity=0.35,
-                                    lighting=True,
-                                    show_scalar_bar=True,
-                                    scalar_bar_args={'title': '|U| (m/s)'},
-                                )
-                            else:
-                                # Fallback if velocity is unavailable in the dataset.
-                                plotter.add_mesh(
-                                    water,
-                                    color='steelblue',
-                                    opacity=0.35,
-                                    lighting=True,
-                                )
+                        mesh_point = internal_mesh.cell_data_to_point_data()
+                        interface = mesh_point.contour(isosurfaces=[0.5], scalars='alpha.water')
+                        if interface.n_points > 0:
+                            interface = interface.triangulate().compute_normals(
+                                cell_normals=False,
+                                point_normals=True,
+                                auto_orient_normals=True,
+                            )
+                            plotter.add_mesh(
+                                interface,
+                                color='deepskyblue',
+                                opacity=0.95,
+                                smooth_shading=True,
+                                specular=0.35,
+                                specular_power=20.0,
+                            )
                     except Exception:
                         pass
                 
-                # 2. Tank outline (wireframe)
-                plotter.add_mesh(internal_mesh.outline(), color='black')
+                # 2) Domain boundary using actual surface geometry (cylindrical), not AABB box.
+                try:
+                    domain_surface = internal_mesh.extract_surface().triangulate()
+                    plotter.add_mesh(
+                        domain_surface,
+                        style='wireframe',
+                        color='black',
+                        line_width=0.8,
+                        opacity=0.5,
+                    )
+                except Exception:
+                    # Fallback to bounds outline only if surface extraction fails.
+                    plotter.add_mesh(internal_mesh.outline(), color='black')
                 
-                # 3. Time Text
+                # 3) Time text
                 plotter.add_text(f"t = {t:.2f} s", position='upper_left', color='black', font_size=12)
                 
                 # Render
@@ -2043,16 +2043,16 @@ def menu_postprocess(is_oscar):
     
     print("\n" + "-"*60)
     print("Select Action:")
-    print("  1) Compare Interfaces (Analytical vs OpenFOAM)")
-    print("  2) Generate Lateral View Video")
-    print("  3) Extract OpenFOAM Interface")
+    print("  1) Compare Latest OpenFOAM Interface vs Analytical (L2 Metrics)")
+    print("  2) Render Perspective Interface Video (alpha.water = 0.5)")
+    print("  3) Extract OpenFOAM Interface Time Series (VTP + CSV)")
     print("  Q) Back to Main Menu")
     print("-"*60)
     
     choice = input("\nAction: ").strip().lower()
     
     if choice == '1':
-        print("\n→ Interface Comparison (Analytical vs OpenFOAM)")
+        print("\n→ Compare Latest OpenFOAM Interface vs Analytical")
         idx_str = input("  Enter case numbers (e.g., 1, 3-5, all): ").strip().lower()
         if idx_str == 'all':
             indices = list(range(len(cases)))
@@ -2063,7 +2063,7 @@ def menu_postprocess(is_oscar):
             print("No valid indices selected.")
             return
         
-        print(f"\nComparing interfaces for {len(indices)} case(s)...")
+        print(f"\nComparing latest interfaces for {len(indices)} case(s)...")
         for i in indices:
             if is_oscar:
                 if i == indices[0]:
@@ -2075,7 +2075,7 @@ def menu_postprocess(is_oscar):
             compare_interfaces(cases[i])
     
     elif choice == '2':
-        print("\n→ Generate Lateral View Video")
+        print("\n→ Render Perspective Interface Video")
         idx_str = input("  Enter case numbers (e.g., 1, 3-5, all): ").strip().lower()
         if idx_str == 'all':
             indices = list(range(len(cases)))
@@ -2086,7 +2086,7 @@ def menu_postprocess(is_oscar):
             print("No valid indices selected.")
             return
             
-        print(f"\nGenerating videos for {len(indices)} case(s)...")
+        print(f"\nRendering perspective videos for {len(indices)} case(s)...")
         for i in indices:
             if is_oscar:
                 if i == indices[0]:
@@ -2097,7 +2097,7 @@ def menu_postprocess(is_oscar):
                         return
             generate_lateral_video(cases[i])
     elif choice == '3':
-        print("\n→ Extract OpenFOAM Interface")
+        print("\n→ Extract OpenFOAM Interface Time Series")
         idx_str = input("  Enter case numbers (e.g., 1, 3-5, all): ").strip().lower()
         if idx_str == 'all':
             indices = list(range(len(cases)))
@@ -2108,7 +2108,7 @@ def menu_postprocess(is_oscar):
             print("No valid indices selected.")
             return
 
-        print(f"\nExtracting interfaces for {len(indices)} case(s)...")
+        print(f"\nExtracting interface time series for {len(indices)} case(s)...")
         for i in indices:
             if is_oscar:
                 if i == indices[0]:

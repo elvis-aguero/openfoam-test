@@ -38,3 +38,10 @@ When running built cases, emit a CSV with timestamp, normU, maxDeltaAlpha, inter
 - 2026-02-13: Updated adaptive-stop `.out` heartbeat to include solver runtime metrics parsed from solver log: `dt`, `Co_max`, `iCo_max`.
 - 2026-02-13: Added incremental parser for `foamRun.stdout.log` lines (`Time`, `deltaT`, `Courant Number`, `Interface Courant Number`) to keep `.out` concise but informative.
 - 2026-02-13: Syntax check passed for `circularTiltingTank/adaptive_stop.py`.
+- 2026-02-13: Updated `generate_lateral_video` in `main.py` to use an oblique perspective camera instead of strict side-on view.
+- 2026-02-13: Replaced bulk-water threshold rendering with explicit interface isosurface rendering (`alpha.water=0.5`) via contouring on point data.
+- 2026-02-13: Replaced AABB `outline()` boundary with extracted domain surface wireframe so cylindrical geometry is visible.
+- 2026-02-13: Syntax check passed for `main.py`.
+- 2026-02-13: Updated Postprocess menu labels and action prompts in `main.py` to be more descriptive (comparison scope, perspective video, time-series extraction outputs).
+- 2026-02-13: No behavior changes; text-only menu/prompt updates.
+- 2026-02-13: Syntax check passed for `main.py`.
