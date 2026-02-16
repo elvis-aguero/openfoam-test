@@ -1,0 +1,86 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 389437
+##  Job Name : post_extract_case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0002
+##  Nodelist : node1945
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Mon Feb 16 13:23:36 EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: extract | Case: case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0002 | vtp_mode: none
+Date: $(date)
+Python: $(which python)
+  📊 Extracting interface for . using PyVista (vtp_mode=none)...
+  Processing 51 timesteps (R=0.1)...
+    Processed 20/51
+    Processed 40/51
+  ✅ Saved contact-angle snapshot diagnostics (CSV + boxplot).
+  ✅ Extraction complete.
+End: $(date)
+------------------------------------------------------------
+## SLURM PROLOG ###############################################################
+##    Job ID : 389452
+##  Job Name : post_extract_case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0002
+##  Nodelist : node1949
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Mon Feb 16 13:27:32 EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: extract | Case: case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0002 | vtp_mode: none
+Date: $(date)
+Python: $(which python)
+/oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test/case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0002/../main.py:2192: MatplotlibDeprecationWarning: The 'labels' parameter of boxplot() has been renamed 'tick_labels' since Matplotlib 3.9; support for the old name will be dropped in 3.11.
+  bp = ax2.boxplot(
+  📊 Extracting interface for . using PyVista (vtp_mode=none)...
+  Processing 51 timesteps (R=0.00415)...
+    Processed 20/51
+    Processed 40/51
+  ✅ Saved contact-angle snapshot diagnostics (CSV + boxplot).
+  ✅ Extraction complete.
+End: $(date)
+------------------------------------------------------------
+## SLURM PROLOG ###############################################################
+##    Job ID : 389498
+##  Job Name : post_extract_case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0002
+##  Nodelist : node1938
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Mon Feb 16 13:46:27 EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: extract | Case: case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0002 | vtp_mode: none
+Date: $(date)
+Python: $(which python)
+  📊 Extracting interface for . using PyVista (vtp_mode=none)...
+  Processing 51 timesteps (R=0.00415)...
+    Processed 20/51
+    Processed 40/51
+  ✅ Saved contact-angle snapshot diagnostics (CSV + boxplot).
+  ✅ Extraction complete.
+End: $(date)
+------------------------------------------------------------
+## SLURM PROLOG ###############################################################
+##    Job ID : 390780
+##  Job Name : post_extract_case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0002
+##  Nodelist : node2339
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Mon Feb 16 14:37:38 EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: extract | Case: case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0002 | vtp_mode: none | quality_profile: balanced
+Date: $(date)
+Python: $(which python)
+  📊 Extracting interface for . using PyVista (vtp_mode=none, quality_profile=balanced)...
+  Processing 51 timesteps (R=0.00415)...
+    Processed 20/51
+    Processed 40/51
+  ✅ Saved contact-angle diagnostics (CSV + quality report + boxplot).
+  ✅ Extraction complete.
+End: $(date)
+------------------------------------------------------------

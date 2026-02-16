@@ -1137,6 +1137,21 @@ def display_config(current_values, sweeps):
         else:
             print(f"  {i+1}) {label:25}: {current_values[k]}")
 
+def _load_build_values_from_case(case_dir):
+    """Load case parameters as editable build-menu defaults."""
+    values = DEFAULTS.copy()
+    params = _load_case_params(case_dir)
+    for key in DEFAULTS:
+        if key in params:
+            values[key] = params[key]
+
+    # Normalize categorical fields and keep safe fallbacks.
+    geo = str(values.get("geo", DEFAULTS["geo"])).lower()
+    mesher = str(values.get("mesher", DEFAULTS["mesher"])).lower()
+    values["geo"] = geo if geo in GEO_OPTIONS else DEFAULTS["geo"]
+    values["mesher"] = mesher if mesher in MESHER_OPTIONS else DEFAULTS["mesher"]
+    return values
+
 def menu_build_cases(is_oscar):
     """Submenu 1: Build Case Setups"""
     print("\n--- Build Case Setups ---")
@@ -1147,16 +1162,53 @@ def menu_build_cases(is_oscar):
     
     while True:
         display_config(current_values, sweeps)
-        print("\nOptions: Enter number to edit, 'done' to build, 'cancel' to abort.")
+        print("\nOptions: Enter number to edit, 'copy' to load from an existing case, 'done' to build, 'cancel' to abort.")
         
         user_input = input("Select: ").strip()
+        cmd = user_input.lower()
         
-        if user_input.lower() == 'cancel':
+        if cmd == 'cancel':
             print("Cancelled.")
             return
         
-        if user_input.lower() == 'done':
+        if cmd == 'done':
             break
+
+        if cmd in ("copy", "load"):
+            cases = sorted([d for d in os.listdir('.') if os.path.isdir(d) and d.startswith('case_')])
+            if not cases:
+                print("  No existing cases found to copy from.")
+                continue
+
+            print("\n  Source cases:")
+            for i, c in enumerate(cases):
+                status = _get_case_status(c)
+                status_str = f" ({status})" if status != "NEW" else ""
+                print(f"    {i+1}) {c}{status_str}")
+
+            src_input = input("  Select source case (number/name, or Enter to cancel): ").strip()
+            if not src_input:
+                continue
+
+            source_case = None
+            if src_input.isdigit():
+                idx = int(src_input) - 1
+                if 0 <= idx < len(cases):
+                    source_case = cases[idx]
+            elif src_input in cases:
+                source_case = src_input
+
+            if not source_case:
+                print(f"  Invalid source case: {src_input}")
+                continue
+
+            try:
+                current_values = _load_build_values_from_case(source_case)
+                sweeps.clear()
+                print(f"  ✅ Loaded settings from {source_case}. You can now tweak values as usual.")
+            except Exception as e:
+                print(f"  ❌ Failed to load settings from {source_case}: {e}")
+            continue
         
         # Parse selection
         param = None
@@ -1695,12 +1747,24 @@ def generate_lateral_video(case_dir):
         
     return True
         
-def extract_interface(case_dir):
-    """Extracts the water-air interface (alpha.water=0.5) using PyVista."""
+def extract_interface(case_dir, vtp_mode="none", quality_profile="balanced"):
+    """Extract OpenFOAM interface time series and optional VTP geometry."""
     pv = _import_pyvista()
     import numpy as np
+    vtp_mode = (vtp_mode or "none").strip().lower()
+    if vtp_mode not in ("none", "latest", "all"):
+        print(f"  ⚠️  Invalid vtp_mode='{vtp_mode}', using 'none'.")
+        vtp_mode = "none"
     
-    print(f"  📊 Extracting interface for {case_dir} using PyVista...")
+    quality_profile = (quality_profile or "balanced").strip().lower()
+    if quality_profile not in ("balanced", "conservative", "very_conservative"):
+        print(f"  ⚠️  Invalid quality_profile='{quality_profile}', using 'balanced'.")
+        quality_profile = "balanced"
+
+    print(
+        f"  📊 Extracting interface for {case_dir} using PyVista "
+        f"(vtp_mode={vtp_mode}, quality_profile={quality_profile})..."
+    )
     
     foam_file = os.path.join(case_dir, "case.foam")
     if not os.path.exists(foam_file):
@@ -1714,6 +1778,10 @@ def extract_interface(case_dir):
          return False
 
     time_values = reader.time_values
+    if not time_values:
+        print("  ⚠️  No timesteps found.")
+        return False
+    latest_time = max(time_values)
     
     # Setup Output in CASE folder
     results_dir = os.path.join(case_dir, "postProcessing", "interface")
@@ -1721,11 +1789,26 @@ def extract_interface(case_dir):
     
     csv_summary = ["time,max_z,min_z,mean_z,num_points"]
     csv_wall = ["time,theta,zeta_wall"] # For dashboard
+    latest_interface_pts = None
+    latest_interface_time = None
     
-    # Parse R from case name
-    import re
-    match = re.search(r'_D([\d.]+)_', os.path.basename(case_dir))
-    R_target = float(match.group(1))/2.0 if match else 0.1
+    # Parse wall radius robustly (works for --case "." in Slurm headless mode).
+    R_target = None
+    try:
+        params = _load_case_params(case_dir)
+        D_val = float(params.get("D"))
+        if D_val > 0.0:
+            R_target = D_val / 2.0
+    except Exception:
+        R_target = None
+    if R_target is None:
+        import re
+        case_token = os.path.basename(os.path.abspath(case_dir))
+        match = re.search(r"_D([\d.]+)_", case_token)
+        if match:
+            R_target = float(match.group(1)) / 2.0
+    if R_target is None:
+        R_target = 0.1
 
     print(f"  Processing {len(time_values)} timesteps (R={R_target})...")
     
@@ -1740,13 +1823,21 @@ def extract_interface(case_dir):
                 try:
                     isosurface = mesh_point.contour(isosurfaces=[0.5], scalars='alpha.water')
                     
-                    # Save VTP
-                    vtp_file = os.path.join(results_dir, f'interface_t{t:.6f}.vtp')
-                    isosurface.save(vtp_file)
+                    # Optional VTP export
+                    save_vtp = (
+                        vtp_mode == "all"
+                        or (vtp_mode == "latest" and abs(t - latest_time) <= 1e-12)
+                    )
+                    if save_vtp:
+                        vtp_file = os.path.join(results_dir, f'interface_t{t:.6f}.vtp')
+                        isosurface.save(vtp_file)
                     
                     if isosurface.n_points > 0:
                         pts = isosurface.points
                         z_coords = pts[:, 2]
+                        if abs(t - latest_time) <= 1e-12:
+                            latest_interface_pts = pts.copy()
+                            latest_interface_time = float(t)
                         # Aggregate Stats
                         csv_summary.append(f"{t},{np.max(z_coords)},{np.min(z_coords)},{np.mean(z_coords)},{len(pts)}")
                         
@@ -1784,6 +1875,34 @@ def extract_interface(case_dir):
         f.write('\n'.join(csv_summary))
     with open(os.path.join(results_dir, 'wall_elevation.csv'), 'w') as f:
         f.write('\n'.join(csv_wall))
+
+    # Latest-snapshot contact-angle diagnostics (100 boundary samples + box plot).
+    if latest_interface_pts is not None and len(latest_interface_pts) > 0:
+        try:
+            params = _load_case_params(case_dir)
+            theta_nominal = params.get("contact_angle", None)
+            if theta_nominal is not None:
+                theta_nominal = float(theta_nominal)
+        except Exception:
+            theta_nominal = None
+
+        angle_rows, angle_meta = _estimate_contact_angles_on_boundary(
+            latest_interface_pts,
+            R_target,
+            n_samples=100,
+            quality_profile=quality_profile,
+        )
+        snap_t = latest_interface_time if latest_interface_time is not None else latest_time
+        _write_contact_angle_snapshot_outputs(
+            results_dir,
+            snap_t,
+            angle_rows,
+            theta_nominal_deg=theta_nominal,
+            thresholds=angle_meta,
+        )
+        print("  ✅ Saved contact-angle diagnostics (CSV + quality report + boxplot).")
+    else:
+        print("  ⚠️  Latest interface missing; skipped contact-angle diagnostics.")
         
     print(f"  ✅ Extraction complete.")
     return True
@@ -1827,6 +1946,694 @@ def _save_points_csv(path, points):
         lines.append(f"{x},{y},{z}")
     with open(path, "w") as f:
         f.write("\n".join(lines))
+
+
+def _contact_angle_from_slope(slope):
+    """
+    Convert local wall-profile slope s = dz/dr|_wall to through-water contact angle (deg).
+    Flat interface (s=0) -> 90 deg.
+    """
+    denom = math.sqrt(1.0 + slope * slope)
+    c = slope / denom
+    c = max(-1.0, min(1.0, c))
+    return math.degrees(math.acos(c))
+
+
+def _weighted_polyfit_1d(x, y, degree, w):
+    """Weighted least-squares polynomial fit with increasing powers."""
+    import numpy as np
+
+    X = np.vander(x, N=degree + 1, increasing=True)
+    sw = np.sqrt(w)
+    Xw = X * sw[:, None]
+    yw = y * sw
+    beta, _, _, _ = np.linalg.lstsq(Xw, yw, rcond=None)
+    gram = Xw.T @ Xw
+    try:
+        cond = float(np.linalg.cond(gram))
+    except Exception:
+        cond = float("inf")
+    return beta, cond
+
+
+def _contact_angle_quality_thresholds(profile):
+    profile_key = (profile or "balanced").strip().lower()
+    thresholds = {
+        "quality_profile": "balanced",
+        "min_points_compute": 5,
+        "min_unique_r_compute": 3,
+        "min_r_span_frac_compute": 0.0015,
+        "min_points_strict": 8,
+        "min_unique_r_strict": 4,
+        "min_r_span_frac_strict": 0.0025,
+        "cond_warn": 5e9,
+        "cond_low": 1e10,
+        "ci_width_warn_deg": 25.0,
+        "ci_width_low_deg": 35.0,
+        "model_mismatch_warn_deg": 8.0,
+        "model_mismatch_low_deg": 12.0,
+        "radial_band_frac": 0.08,
+        "radial_outer_frac": 0.02,
+        "theta_window_scale": 1.2,
+        "n_bootstrap": 200,
+        "min_bootstrap_success": 40,
+        "global_harmonics": 4,
+    }
+    if profile_key == "conservative":
+        thresholds.update(
+            {
+                "quality_profile": "conservative",
+                "min_points_strict": 10,
+                "min_unique_r_strict": 5,
+                "min_r_span_frac_strict": 0.0030,
+                "cond_warn": 5e7,
+                "cond_low": 1e8,
+                "ci_width_warn_deg": 15.0,
+                "ci_width_low_deg": 20.0,
+                "model_mismatch_warn_deg": 3.0,
+                "model_mismatch_low_deg": 5.0,
+            }
+        )
+    elif profile_key == "very_conservative":
+        thresholds.update(
+            {
+                "quality_profile": "very_conservative",
+                "min_points_strict": 12,
+                "min_unique_r_strict": 6,
+                "min_r_span_frac_strict": 0.0040,
+                "cond_warn": 5e6,
+                "cond_low": 1e7,
+                "ci_width_warn_deg": 12.0,
+                "ci_width_low_deg": 15.0,
+                "model_mismatch_warn_deg": 2.5,
+                "model_mismatch_low_deg": 4.0,
+            }
+        )
+    return thresholds
+
+
+def _theta_basis(theta_val, n_harmonics):
+    vals = [1.0]
+    for k in range(1, n_harmonics + 1):
+        vals.append(math.cos(k * theta_val))
+        vals.append(math.sin(k * theta_val))
+    return vals
+
+
+def _build_periodic_wall_model(theta_arr, xnorm_arr, z_arr, w_arr, n_harmonics):
+    import numpy as np
+
+    basis = np.asarray([_theta_basis(t, n_harmonics) for t in theta_arr], dtype=float)
+    x0 = basis
+    x1 = basis * xnorm_arr[:, None]
+    x2 = basis * (xnorm_arr * xnorm_arr)[:, None]
+    X = np.hstack([x0, x1, x2])
+
+    sw = np.sqrt(w_arr)
+    Xw = X * sw[:, None]
+    yw = z_arr * sw
+    beta, _, _, _ = np.linalg.lstsq(Xw, yw, rcond=None)
+    gram = Xw.T @ Xw
+    try:
+        cond = float(np.linalg.cond(gram))
+    except Exception:
+        cond = float("inf")
+
+    nb = basis.shape[1]
+    coeff = beta.reshape(3, nb)
+    return coeff, cond
+
+
+def _eval_periodic_wall_model(coeff, x_scale, theta_val, n_harmonics):
+    import numpy as np
+
+    b = np.asarray(_theta_basis(theta_val, n_harmonics), dtype=float)
+    zeta_wall = float(np.dot(coeff[0], b))
+    slope = float(np.dot(coeff[1], b) / max(x_scale, 1e-12))
+    return zeta_wall, slope
+
+
+def _estimate_contact_angles_on_boundary(
+    interface_points,
+    R_target,
+    n_samples=100,
+    quality_profile="balanced",
+):
+    """
+    Estimate contact-angle distribution for all sampled thetas.
+    Values are always reported where possible; quality is encoded via tiers/flags.
+    """
+    import numpy as np
+
+    thresholds = _contact_angle_quality_thresholds(quality_profile)
+    rows = []
+    if interface_points is None or len(interface_points) == 0:
+        return rows, thresholds
+
+    pts = np.asarray(interface_points)
+    x = pts[:, 0]
+    y = pts[:, 1]
+    z = pts[:, 2]
+    r = np.sqrt(x * x + y * y)
+    theta = np.arctan2(y, x)
+
+    dtheta = 2.0 * math.pi / float(n_samples)
+    half_window = thresholds["theta_window_scale"] * dtheta
+    r_min = R_target * (1.0 - thresholds["radial_band_frac"])
+    r_max = R_target * (1.0 + thresholds["radial_outer_frac"])
+    min_r_span_compute = thresholds["min_r_span_frac_compute"] * R_target
+    min_r_span_strict = thresholds["min_r_span_frac_strict"] * R_target
+
+    rng = np.random.default_rng(42)
+
+    def _wrapped_abs_delta(a):
+        return np.abs((a + math.pi) % (2.0 * math.pi) - math.pi)
+
+    # Global periodic fallback model across all boundary-near interface points.
+    global_model = None
+    global_cond = float("inf")
+    global_mask = (r >= R_target * 0.85) & (r <= R_target * 1.05)
+    if np.any(global_mask):
+        rg = r[global_mask]
+        tg = theta[global_mask]
+        zg = z[global_mask]
+        xg = rg - R_target
+        if rg.size >= 12:
+            xg_scale = max(float(np.max(np.abs(xg))), 1e-12)
+            xg_norm = xg / xg_scale
+            wg = 1.0 / (np.abs(xg) + 0.1 * xg_scale)
+            if np.any(np.isfinite(wg)):
+                wg_cap = np.percentile(wg[np.isfinite(wg)], 95)
+                wg = np.clip(wg, 0.0, wg_cap)
+
+            max_h = thresholds["global_harmonics"]
+            for h in range(max_h, -1, -1):
+                n_unknowns = 3 * (1 + 2 * h)
+                if rg.size < (n_unknowns + 5):
+                    continue
+                try:
+                    coeff, cond = _build_periodic_wall_model(tg, xg_norm, zg, wg, h)
+                    if np.isfinite(cond):
+                        global_model = {"coeff": coeff, "x_scale": xg_scale, "n_harmonics": h}
+                        global_cond = cond
+                        break
+                except Exception:
+                    continue
+
+    for i in range(n_samples):
+        theta0 = -math.pi + (i + 0.5) * dtheta
+        mask = (_wrapped_abs_delta(theta - theta0) <= half_window) & (r >= r_min) & (r <= r_max)
+        rr = r[mask]
+        zz = z[mask]
+
+        n_unique = int(np.unique(np.round(rr, 12)).size if rr.size else 0)
+        r_span = float((np.max(rr) - np.min(rr)) if rr.size else 0.0)
+
+        row = {
+            "theta_rad": float(theta0),
+            "theta_deg": float(math.degrees(theta0)),
+            "zeta_wall": float("nan"),
+            "slope_dz_dr": float("nan"),
+            "contact_angle_deg": float("nan"),
+            "ci_low_deg": float("nan"),
+            "ci_high_deg": float("nan"),
+            "ci_width_deg": float("nan"),
+            "fit_cond": float("inf"),
+            "fit_cond_global": float(global_cond),
+            "model_diff_deg": float("nan"),
+            "n_points": int(rr.size),
+            "n_unique_r": n_unique,
+            "r_span": r_span,
+            "status": "invalid",
+            "quality_tier": "invalid",
+            "estimator_source": "none",
+            "flag_sparse_local": False,
+            "flag_ill_conditioned": False,
+            "flag_wide_ci": False,
+            "flag_model_mismatch": False,
+            "flag_fallback_used": False,
+            "used_in_strict_stats": False,
+            "used_in_all_stats": False,
+            "quality_profile": thresholds["quality_profile"],
+        }
+
+        local_angle = float("nan")
+        local_zeta = float("nan")
+        local_slope = float("nan")
+        local_cond = float("inf")
+        model_diff = float("nan")
+        ci_low = float("nan")
+        ci_high = float("nan")
+        ci_width = float("nan")
+
+        can_attempt_local = (
+            row["n_points"] >= thresholds["min_points_compute"]
+            and row["n_unique_r"] >= thresholds["min_unique_r_compute"]
+            and row["r_span"] >= min_r_span_compute
+        )
+        if can_attempt_local:
+            try:
+                xloc = rr - R_target
+                x_scale = max(float(np.max(np.abs(xloc))), 1e-12)
+                xnorm = xloc / x_scale
+                w = 1.0 / (np.abs(xloc) + 0.1 * x_scale)
+                if np.any(np.isfinite(w)):
+                    cap = np.percentile(w[np.isfinite(w)], 95)
+                    w = np.clip(w, 0.0, cap)
+
+                beta2, local_cond = _weighted_polyfit_1d(xnorm, zz, degree=2, w=w)
+                local_slope = float(beta2[1] / x_scale)
+                local_zeta = float(beta2[0])
+                local_angle = _contact_angle_from_slope(local_slope)
+
+                beta1, _ = _weighted_polyfit_1d(xnorm, zz, degree=1, w=w)
+                slope_lin = float(beta1[1] / x_scale)
+                model_diff = abs(local_angle - _contact_angle_from_slope(slope_lin))
+
+                boot_angles = []
+                n_local = rr.size
+                for _ in range(thresholds["n_bootstrap"]):
+                    idx = rng.integers(0, n_local, size=n_local)
+                    rb = rr[idx]
+                    zb = zz[idx]
+                    if np.unique(np.round(rb, 12)).size < thresholds["min_unique_r_compute"]:
+                        continue
+                    if (np.max(rb) - np.min(rb)) < min_r_span_compute:
+                        continue
+                    xloc_b = rb - R_target
+                    x_scale_b = max(float(np.max(np.abs(xloc_b))), 1e-12)
+                    xnorm_b = xloc_b / x_scale_b
+                    wb = 1.0 / (np.abs(xloc_b) + 0.1 * x_scale_b)
+                    if np.any(np.isfinite(wb)):
+                        cap_b = np.percentile(wb[np.isfinite(wb)], 95)
+                        wb = np.clip(wb, 0.0, cap_b)
+                    try:
+                        beta_b, _ = _weighted_polyfit_1d(xnorm_b, zb, degree=2, w=wb)
+                        slope_b = float(beta_b[1] / x_scale_b)
+                        boot_angles.append(_contact_angle_from_slope(slope_b))
+                    except Exception:
+                        continue
+
+                if len(boot_angles) >= thresholds["min_bootstrap_success"]:
+                    ci_low, ci_high = np.percentile(np.asarray(boot_angles), [2.5, 97.5])
+                    ci_low = float(ci_low)
+                    ci_high = float(ci_high)
+                    ci_width = float(ci_high - ci_low)
+            except Exception:
+                local_angle = float("nan")
+
+        use_local = np.isfinite(local_angle)
+        if use_local:
+            row["zeta_wall"] = local_zeta
+            row["slope_dz_dr"] = local_slope
+            row["contact_angle_deg"] = local_angle
+            row["estimator_source"] = "local_quadratic"
+            row["fit_cond"] = float(local_cond)
+        elif global_model is not None:
+            try:
+                zeta_f, slope_f = _eval_periodic_wall_model(
+                    global_model["coeff"],
+                    global_model["x_scale"],
+                    theta0,
+                    global_model["n_harmonics"],
+                )
+                row["zeta_wall"] = zeta_f
+                row["slope_dz_dr"] = slope_f
+                row["contact_angle_deg"] = _contact_angle_from_slope(slope_f)
+                row["estimator_source"] = "global_periodic_fallback"
+                row["flag_fallback_used"] = True
+                row["fit_cond"] = float(local_cond)
+            except Exception:
+                pass
+
+        row["model_diff_deg"] = float(model_diff)
+        row["ci_low_deg"] = float(ci_low)
+        row["ci_high_deg"] = float(ci_high)
+        row["ci_width_deg"] = float(ci_width)
+
+        row["flag_sparse_local"] = bool(
+            row["n_points"] < thresholds["min_points_strict"]
+            or row["n_unique_r"] < thresholds["min_unique_r_strict"]
+            or row["r_span"] < min_r_span_strict
+        )
+        row["flag_ill_conditioned"] = bool(
+            (np.isfinite(row["fit_cond"]) and row["fit_cond"] > thresholds["cond_low"])
+            or (
+                row["estimator_source"] == "global_periodic_fallback"
+                and np.isfinite(row["fit_cond_global"])
+                and row["fit_cond_global"] > thresholds["cond_low"]
+            )
+        )
+        row["flag_wide_ci"] = bool(
+            np.isfinite(row["ci_width_deg"]) and row["ci_width_deg"] > thresholds["ci_width_low_deg"]
+        )
+        row["flag_model_mismatch"] = bool(
+            np.isfinite(row["model_diff_deg"])
+            and row["model_diff_deg"] > thresholds["model_mismatch_low_deg"]
+        )
+
+        if not np.isfinite(row["contact_angle_deg"]):
+            row["status"] = "invalid"
+            row["quality_tier"] = "invalid"
+            rows.append(row)
+            continue
+
+        row["used_in_all_stats"] = True
+        has_warn = bool(
+            row["flag_sparse_local"]
+            or row["estimator_source"] == "global_periodic_fallback"
+            or (np.isfinite(row["fit_cond"]) and row["fit_cond"] > thresholds["cond_warn"])
+            or (np.isfinite(row["ci_width_deg"]) and row["ci_width_deg"] > thresholds["ci_width_warn_deg"])
+            or (
+                np.isfinite(row["model_diff_deg"])
+                and row["model_diff_deg"] > thresholds["model_mismatch_warn_deg"]
+            )
+        )
+        has_low = bool(
+            row["flag_ill_conditioned"] or row["flag_wide_ci"] or row["flag_model_mismatch"]
+        )
+
+        if has_low:
+            row["quality_tier"] = "low"
+            if row["flag_ill_conditioned"]:
+                row["status"] = "ill_conditioned"
+            elif row["flag_wide_ci"]:
+                row["status"] = "wide_ci"
+            else:
+                row["status"] = "model_mismatch"
+        elif has_warn:
+            row["quality_tier"] = "medium"
+            if row["estimator_source"] == "global_periodic_fallback":
+                row["status"] = "fallback"
+            elif row["flag_sparse_local"]:
+                row["status"] = "sparse_local"
+            else:
+                row["status"] = "warn"
+        else:
+            row["quality_tier"] = "high"
+            row["status"] = "high"
+            row["used_in_strict_stats"] = True
+
+        rows.append(row)
+
+    return rows, thresholds
+
+
+def _write_contact_angle_snapshot_outputs(
+    results_dir,
+    snapshot_time,
+    rows,
+    theta_nominal_deg=None,
+    thresholds=None,
+):
+    import numpy as np
+
+    if not rows:
+        return
+
+    rows_sorted = sorted(rows, key=lambda r: r["theta_rad"])
+    samples_path = os.path.join(results_dir, "contact_angle_samples_latest.csv")
+    summary_path = os.path.join(results_dir, "contact_angle_summary_latest.csv")
+    profile_path = os.path.join(results_dir, "wall_profile_latest.csv")
+    quality_path = os.path.join(results_dir, "contact_angle_quality_report_latest.csv")
+
+    # Per-sample detail CSV.
+    header = (
+        "snapshot_time,theta_rad,theta_deg,zeta_wall,slope_dz_dr,contact_angle_deg,"
+        "ci_low_deg,ci_high_deg,ci_width_deg,fit_cond,fit_cond_global,model_diff_deg,"
+        "n_points,n_unique_r,r_span,status,quality_tier,estimator_source,"
+        "flag_sparse_local,flag_ill_conditioned,flag_wide_ci,flag_model_mismatch,flag_fallback_used,"
+        "used_in_strict_stats,used_in_all_stats"
+    )
+    lines = [header]
+    profile_lines = ["snapshot_time,theta_rad,theta_deg,zeta_wall,status,quality_tier,estimator_source"]
+    for r in rows_sorted:
+        lines.append(
+            ",".join(
+                [
+                    f"{snapshot_time:.12g}",
+                    f"{r['theta_rad']:.12g}",
+                    f"{r['theta_deg']:.12g}",
+                    f"{r['zeta_wall']:.12g}",
+                    f"{r['slope_dz_dr']:.12g}",
+                    f"{r['contact_angle_deg']:.12g}",
+                    f"{r['ci_low_deg']:.12g}",
+                    f"{r['ci_high_deg']:.12g}",
+                    f"{r['ci_width_deg']:.12g}",
+                    f"{r['fit_cond']:.12g}",
+                    f"{r['fit_cond_global']:.12g}",
+                    f"{r['model_diff_deg']:.12g}",
+                    str(r["n_points"]),
+                    str(r["n_unique_r"]),
+                    f"{r['r_span']:.12g}",
+                    r["status"],
+                    r["quality_tier"],
+                    r["estimator_source"],
+                    "1" if r["flag_sparse_local"] else "0",
+                    "1" if r["flag_ill_conditioned"] else "0",
+                    "1" if r["flag_wide_ci"] else "0",
+                    "1" if r["flag_model_mismatch"] else "0",
+                    "1" if r["flag_fallback_used"] else "0",
+                    "1" if r["used_in_strict_stats"] else "0",
+                    "1" if r["used_in_all_stats"] else "0",
+                ]
+            )
+        )
+        profile_lines.append(
+            ",".join(
+                [
+                    f"{snapshot_time:.12g}",
+                    f"{r['theta_rad']:.12g}",
+                    f"{r['theta_deg']:.12g}",
+                    f"{r['zeta_wall']:.12g}",
+                    r["status"],
+                    r["quality_tier"],
+                    r["estimator_source"],
+                ]
+            )
+        )
+
+    with open(samples_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    with open(profile_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(profile_lines))
+
+    all_angles = np.asarray(
+        [r["contact_angle_deg"] for r in rows_sorted if np.isfinite(r["contact_angle_deg"])],
+        dtype=float,
+    )
+    high_angles = np.asarray(
+        [
+            r["contact_angle_deg"]
+            for r in rows_sorted
+            if r["quality_tier"] == "high" and np.isfinite(r["contact_angle_deg"])
+        ],
+        dtype=float,
+    )
+    high_medium_angles = np.asarray(
+        [
+            r["contact_angle_deg"]
+            for r in rows_sorted
+            if r["quality_tier"] in ("high", "medium") and np.isfinite(r["contact_angle_deg"])
+        ],
+        dtype=float,
+    )
+    low_angles = np.asarray(
+        [
+            r["contact_angle_deg"]
+            for r in rows_sorted
+            if r["quality_tier"] == "low" and np.isfinite(r["contact_angle_deg"])
+        ],
+        dtype=float,
+    )
+
+    def _stats_lines(prefix, vals):
+        if vals.size == 0:
+            return []
+        q1, med, q3 = np.percentile(vals, [25, 50, 75])
+        return [
+            f"{prefix}_mean_deg,{np.mean(vals)}",
+            f"{prefix}_q1_deg,{q1}",
+            f"{prefix}_median_deg,{med}",
+            f"{prefix}_q3_deg,{q3}",
+            f"{prefix}_min_deg,{np.min(vals)}",
+            f"{prefix}_max_deg,{np.max(vals)}",
+        ]
+
+    summary_lines = ["metric,value", f"snapshot_time,{snapshot_time}"]
+    profile_name = rows_sorted[0].get("quality_profile", "balanced")
+    summary_lines.append(f"quality_profile,{profile_name}")
+    if theta_nominal_deg is not None:
+        summary_lines.append(f"theta_nominal_deg,{theta_nominal_deg}")
+
+    n_total = len(rows_sorted)
+    n_computed = int(all_angles.size)
+    n_invalid = int(sum(1 for r in rows_sorted if r["quality_tier"] == "invalid"))
+    n_high = int(sum(1 for r in rows_sorted if r["quality_tier"] == "high"))
+    n_medium = int(sum(1 for r in rows_sorted if r["quality_tier"] == "medium"))
+    n_low = int(sum(1 for r in rows_sorted if r["quality_tier"] == "low"))
+
+    summary_lines.extend(
+        [
+            f"num_samples_total,{n_total}",
+            f"num_samples_computed,{n_computed}",
+            f"num_samples_invalid,{n_invalid}",
+            f"num_tier_high,{n_high}",
+            f"num_tier_medium,{n_medium}",
+            f"num_tier_low,{n_low}",
+            # Compatibility aliases:
+            f"num_samples_ok,{n_high}",
+            f"num_samples_used_for_stats,{n_computed}",
+        ]
+    )
+
+    summary_lines.extend(_stats_lines("contact_angle_all", all_angles))
+    summary_lines.extend(_stats_lines("contact_angle_high", high_angles))
+    summary_lines.extend(_stats_lines("contact_angle_high_medium", high_medium_angles))
+    summary_lines.extend(_stats_lines("contact_angle_low", low_angles))
+
+    # Backward-compatible aliases now point to all-sample stats.
+    if all_angles.size > 0:
+        q1_all, med_all, q3_all = np.percentile(all_angles, [25, 50, 75])
+        summary_lines.extend(
+            [
+                f"contact_angle_mean_deg,{np.mean(all_angles)}",
+                f"contact_angle_q1_deg,{q1_all}",
+                f"contact_angle_median_deg,{med_all}",
+                f"contact_angle_q3_deg,{q3_all}",
+                f"contact_angle_min_deg,{np.min(all_angles)}",
+                f"contact_angle_max_deg,{np.max(all_angles)}",
+            ]
+        )
+    if theta_nominal_deg is not None and all_angles.size > 0:
+        summary_lines.append(f"bias_all_vs_theta_nominal_deg,{np.mean(all_angles) - theta_nominal_deg}")
+    if theta_nominal_deg is not None and high_angles.size > 0:
+        summary_lines.append(f"bias_high_vs_theta_nominal_deg,{np.mean(high_angles) - theta_nominal_deg}")
+
+    with open(summary_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(summary_lines))
+
+    if thresholds is None:
+        thresholds = {}
+    quality_lines = ["rule,threshold,count,fraction"]
+    denom = float(max(n_total, 1))
+    rules = [
+        (
+            "sparse_local",
+            (
+                f"n_points<{thresholds.get('min_points_strict', 'n/a')} or "
+                f"n_unique_r<{thresholds.get('min_unique_r_strict', 'n/a')} or "
+                f"r_span<{thresholds.get('min_r_span_frac_strict', 'n/a')}*R"
+            ),
+            sum(1 for r in rows_sorted if r["flag_sparse_local"]),
+        ),
+        (
+            "ill_conditioned",
+            f"fit_cond>{thresholds.get('cond_low', 'n/a')}",
+            sum(1 for r in rows_sorted if r["flag_ill_conditioned"]),
+        ),
+        (
+            "wide_ci",
+            f"ci_width_deg>{thresholds.get('ci_width_low_deg', 'n/a')}",
+            sum(1 for r in rows_sorted if r["flag_wide_ci"]),
+        ),
+        (
+            "model_mismatch",
+            f"model_diff_deg>{thresholds.get('model_mismatch_low_deg', 'n/a')}",
+            sum(1 for r in rows_sorted if r["flag_model_mismatch"]),
+        ),
+        (
+            "fallback_used",
+            "estimator_source=global_periodic_fallback",
+            sum(1 for r in rows_sorted if r["flag_fallback_used"]),
+        ),
+        ("tier_high", "quality_tier=high", n_high),
+        ("tier_medium", "quality_tier=medium", n_medium),
+        ("tier_low", "quality_tier=low", n_low),
+        ("tier_invalid", "quality_tier=invalid", n_invalid),
+    ]
+    for name, thr, count in rules:
+        quality_lines.append(f"{name},{thr},{count},{count/denom}")
+    with open(quality_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(quality_lines))
+
+    # Figure: zeta(theta) profile + contact-angle boxplot with quality overlays.
+    try:
+        import matplotlib.pyplot as plt
+
+        theta_deg = np.asarray([r["theta_deg"] for r in rows_sorted], dtype=float)
+        zeta = np.asarray([r["zeta_wall"] for r in rows_sorted], dtype=float)
+        tiers = [r["quality_tier"] for r in rows_sorted]
+        angle = np.asarray([r["contact_angle_deg"] for r in rows_sorted], dtype=float)
+        color_by_tier = {"high": "#2a9d8f", "medium": "#f4a261", "low": "#e76f51", "invalid": "#7f8c8d"}
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11.5, 4.8), constrained_layout=True)
+
+        valid_profile = np.isfinite(theta_deg) & np.isfinite(zeta)
+        if np.any(valid_profile):
+            ax1.plot(theta_deg[valid_profile], zeta[valid_profile], color="#1d3557", lw=1.2, alpha=0.6)
+            for tier_name in ("high", "medium", "low", "invalid"):
+                m = np.asarray(
+                    [valid_profile[j] and tiers[j] == tier_name for j in range(len(rows_sorted))],
+                    dtype=bool,
+                )
+                if np.any(m):
+                    ax1.scatter(theta_deg[m], zeta[m], s=10, alpha=0.8, color=color_by_tier[tier_name], label=tier_name)
+        ax1.set_xlabel("theta (deg)")
+        ax1.set_ylabel("interface height zeta at wall (m)")
+        ax1.set_title("Wall Interface Profile (latest snapshot)")
+        ax1.grid(True, alpha=0.25)
+        ax1.legend(loc="best", fontsize=8)
+
+        if all_angles.size > 0:
+            bp = ax2.boxplot(
+                all_angles,
+                vert=True,
+                patch_artist=True,
+                showmeans=True,
+                meanline=False,
+                tick_labels=["all computed"],
+            )
+            for patch in bp["boxes"]:
+                patch.set_facecolor("#8ecae6")
+                patch.set_alpha(0.6)
+
+            # Overlay tiered points with small horizontal jitter.
+            plot_rng = np.random.default_rng(0)
+            for tier_name in ("high", "medium", "low"):
+                vals = np.asarray(
+                    [
+                        rows_sorted[j]["contact_angle_deg"]
+                        for j in range(len(rows_sorted))
+                        if rows_sorted[j]["quality_tier"] == tier_name
+                        and np.isfinite(rows_sorted[j]["contact_angle_deg"])
+                    ],
+                    dtype=float,
+                )
+                if vals.size > 0:
+                    xj = 1.0 + plot_rng.uniform(-0.06, 0.06, size=vals.size)
+                    ax2.scatter(xj, vals, s=14, alpha=0.75, color=color_by_tier[tier_name], label=f"{tier_name} ({vals.size})")
+
+            q1, med, q3 = np.percentile(all_angles, [25, 50, 75])
+            mean_v = np.mean(all_angles)
+            note = f"mean(all)={mean_v:.2f}\nQ1={q1:.2f}\nmedian={med:.2f}\nQ3={q3:.2f}\nN={all_angles.size}"
+            if theta_nominal_deg is not None:
+                note += f"\ntheta0={theta_nominal_deg:.2f}"
+            ax2.text(1.15, med, note, fontsize=9, va="center")
+            ax2.legend(loc="best", fontsize=8)
+        else:
+            ax2.text(0.5, 0.5, "No computed contact-angle samples", ha="center", va="center")
+            ax2.set_xticks([])
+
+        ax2.set_ylabel("contact angle (deg)")
+        ax2.set_title("Contact Angle Distribution (all samples, tiered quality)")
+        ax2.grid(True, axis="y", alpha=0.25)
+
+        fig.suptitle(f"Interface Snapshot Metrics at t={snapshot_time:.4g} s")
+        fig.savefig(os.path.join(results_dir, "interface_contact_angle_snapshot_latest.png"), dpi=150)
+        plt.close(fig)
+    except Exception:
+        pass
 
 def _extract_openfoam_interface_latest(case_dir, results_dir):
     pv = _import_pyvista()
@@ -2045,7 +2852,7 @@ def menu_postprocess(is_oscar):
     print("Select Action:")
     print("  1) Compare Latest OpenFOAM Interface vs Analytical (L2 Metrics)")
     print("  2) Render Perspective Interface Video (alpha.water = 0.5)")
-    print("  3) Extract OpenFOAM Interface Time Series (VTP + CSV)")
+    print("  3) Extract OpenFOAM Interface Time Series (CSV + Optional VTP, always 100 CA samples)")
     print("  Q) Back to Main Menu")
     print("-"*60)
     
@@ -2098,6 +2905,42 @@ def menu_postprocess(is_oscar):
             generate_lateral_video(cases[i])
     elif choice == '3':
         print("\n→ Extract OpenFOAM Interface Time Series")
+        print("  VTP export mode:")
+        print("    1) none   (CSV only, default)")
+        print("    2) latest (one VTP at latest time)")
+        print("    3) all    (one VTP per timestep)")
+        vtp_in = input("  Select VTP mode [1]: ").strip().lower()
+        vtp_mode_map = {
+            "": "none",
+            "1": "none",
+            "none": "none",
+            "2": "latest",
+            "latest": "latest",
+            "3": "all",
+            "all": "all",
+        }
+        vtp_mode = vtp_mode_map.get(vtp_in, "none")
+        if vtp_in not in vtp_mode_map:
+            print("  ⚠️  Invalid VTP mode. Using default: none.")
+        print("  Contact-angle quality profile:")
+        print("    1) balanced          (default)")
+        print("    2) conservative")
+        print("    3) very_conservative")
+        q_in = input("  Select quality profile [1]: ").strip().lower()
+        q_map = {
+            "": "balanced",
+            "1": "balanced",
+            "balanced": "balanced",
+            "2": "conservative",
+            "conservative": "conservative",
+            "3": "very_conservative",
+            "very_conservative": "very_conservative",
+            "very-conservative": "very_conservative",
+        }
+        quality_profile = q_map.get(q_in, "balanced")
+        if q_in not in q_map:
+            print("  ⚠️  Invalid quality profile. Using default: balanced.")
+
         idx_str = input("  Enter case numbers (e.g., 1, 3-5, all): ").strip().lower()
         if idx_str == 'all':
             indices = list(range(len(cases)))
@@ -2115,17 +2958,32 @@ def menu_postprocess(is_oscar):
                     submit = input("\n⚠️  Post-processing detected. Submit as Slurm job? (y/n): ").strip().lower()
                     if submit == 'y':
                         for idx in indices:
-                            run_postprocess_oscar(cases[idx], "extract")
+                            run_postprocess_oscar(
+                                cases[idx],
+                                "extract",
+                                vtp_mode=vtp_mode,
+                                quality_profile=quality_profile,
+                            )
                         return
-            extract_interface(cases[i])
+            extract_interface(cases[i], vtp_mode=vtp_mode, quality_profile=quality_profile)
     elif choice == 'q':
         return
 
-def run_postprocess_oscar(case_name, action):
+def run_postprocess_oscar(case_name, action, vtp_mode="none", quality_profile="balanced"):
     """Submits a post-processing job to Slurm."""
+    vtp_mode = (vtp_mode or "none").strip().lower()
+    if vtp_mode not in ("none", "latest", "all"):
+        vtp_mode = "none"
+    quality_profile = (quality_profile or "balanced").strip().lower()
+    if quality_profile not in ("balanced", "conservative", "very_conservative"):
+        quality_profile = "balanced"
+
     slurm_dir = os.path.join(case_name, "slurm")
     os.makedirs(slurm_dir, exist_ok=True)
     script_path = os.path.join(slurm_dir, f"postprocess_{action}.slurm")
+    extra_args = ""
+    if action == "extract":
+        extra_args = f" --vtp-mode {vtp_mode} --quality-profile {quality_profile}"
     
     header = [
         "#!/usr/bin/env bash",
@@ -2157,16 +3015,16 @@ def run_postprocess_oscar(case_name, action):
         "# -----------------------------------",
         "",
         "echo '------------------------------------------------------------'",
-        f"echo 'Action: {action} | Case: {case_name}'",
+        f"echo 'Action: {action} | Case: {case_name} | vtp_mode: {vtp_mode} | quality_profile: {quality_profile}'",
         f"echo 'Date: $(date)'",
         f"echo 'Python: $(which python)'",  # Debug print
         "export SLOSHING_OFFSCREEN=1",
         "export VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN=1",
         f"cd {case_name}",
         "if command -v xvfb-run >/dev/null 2>&1; then",
-        f"  xvfb-run -s \"-screen 0 1280x720x24\" python ../main.py --headless --case . --action {action}",
+        f"  xvfb-run -s \"-screen 0 1280x720x24\" python ../main.py --headless --case . --action {action}{extra_args}",
         "else",
-        f"  python ../main.py --headless --case . --action {action}",
+        f"  python ../main.py --headless --case . --action {action}{extra_args}",
         "fi",
         "echo 'End: $(date)'",
         "echo '------------------------------------------------------------'",
@@ -2216,6 +3074,20 @@ if __name__ == "__main__":
     parser.add_argument("--headless", action="store_true", help="Run without menu")
     parser.add_argument("--case", type=str, help="Case directory for headless mode")
     parser.add_argument("--action", type=str, choices=["compare", "video", "extract"], help="Action for headless mode")
+    parser.add_argument(
+        "--vtp-mode",
+        type=str,
+        choices=["none", "latest", "all"],
+        default="none",
+        help="VTP export mode for extract action (default: none)",
+    )
+    parser.add_argument(
+        "--quality-profile",
+        type=str,
+        choices=["balanced", "conservative", "very_conservative"],
+        default="balanced",
+        help="Quality thresholds for contact-angle diagnostics in extract action (default: balanced)",
+    )
     
     args = parser.parse_args()
     
@@ -2229,6 +3101,10 @@ if __name__ == "__main__":
         elif args.action == "video":
             generate_lateral_video(args.case)
         elif args.action == "extract":
-            extract_interface(args.case)
+            extract_interface(
+                args.case,
+                vtp_mode=args.vtp_mode,
+                quality_profile=args.quality_profile,
+            )
     else:
         main_menu()

@@ -45,3 +45,39 @@ When running built cases, emit a CSV with timestamp, normU, maxDeltaAlpha, inter
 - 2026-02-13: Updated Postprocess menu labels and action prompts in `main.py` to be more descriptive (comparison scope, perspective video, time-series extraction outputs).
 - 2026-02-13: No behavior changes; text-only menu/prompt updates.
 - 2026-02-13: Syntax check passed for `main.py`.
+- 2026-02-13: Implemented option-3 VTP export modes in `main.py` extraction flow: `none` (default), `latest`, `all`.
+- 2026-02-13: Default extraction now writes CSV outputs without generating per-timestep VTP files.
+- 2026-02-13: Added menu prompt for VTP mode selection and wired mode through local extraction + Slurm postprocess submission.
+- 2026-02-13: Added headless CLI flag `--vtp-mode {none,latest,all}` (default `none`) for `--action extract`.
+- 2026-02-13: Syntax check passed for `main.py`.
+- 2026-02-16: User requested contact-angle boxplot/statistics from boundary interface samples; implementation in progress.
+- 2026-02-16: Added helper functions for slope-based contact-angle estimation with bootstrap uncertainty and explicit per-sample quality flags in `main.py`.
+- 2026-02-16: Completed contact-angle diagnostics integration in `extract_interface`: latest-snapshot boundary sampling (100 azimuthal points), per-sample CSV, summary CSV, wall-profile CSV, and snapshot figure with boxplot.
+- 2026-02-16: Added explicit sample-quality statuses (`too_few`, `ill_conditioned`, `bootstrap_failed`, `wide_ci`, `model_mismatch`, `ok`) and deterministic bootstrap CI for contact-angle estimates.
+- 2026-02-16: Re-synced with `.context/PROTOCOL.md` and verified task traceability/ownership before continuing code changes.
+- 2026-02-16: Syntax validation passed: `python3 -m py_compile main.py`.
+- 2026-02-16: Submitted Slurm postprocess extract for `case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0002` (job `389437`) to validate contact-angle outputs.
+- 2026-02-16: Diagnosed headless extraction radius fallback bug (`--case .` caused basename parse miss and `R=0.1`), which produced empty wall/contact-angle samples.
+- 2026-02-16: Patched `extract_interface` radius detection to prefer `case_params.json` (`D/2`) and fallback to absolute-path basename regex.
+- 2026-02-16: Re-submitted extract validation job (job `389452`, COMPLETED 0:0); contact-angle outputs now populated (`num_samples_ok=4`) and no VTP files generated in default mode.
+- 2026-02-16: Replaced Matplotlib `boxplot(labels=...)` with `tick_labels=...` in `main.py` to suppress deprecation warning noise in Slurm postprocess logs.
+- 2026-02-16: Final Slurm validation rerun (job `389498`, COMPLETED 0:0) confirmed clean postprocess log (no new Matplotlib warning) and stable contact-angle outputs.
+- 2026-02-16: Reworked contact-angle extraction to avoid hard-discarding samples: all 100 azimuthal samples now receive estimated values when geometry is available, with quality tiers/flags for confidence.
+- 2026-02-16: Added quality-profile support (`balanced`, `conservative`, `very_conservative`) through menu, Slurm postprocess submission, and headless CLI (`--quality-profile`).
+- 2026-02-16: Added/extended outputs in `postProcessing/interface/`: `contact_angle_quality_report_latest.csv`, expanded `contact_angle_samples_latest.csv`, expanded `contact_angle_summary_latest.csv`, and tier-overlay snapshot figure.
+- 2026-02-16: Updated summary semantics to report all-sample statistics by default plus tier-stratified metrics (`high`, `high_medium`, `low`) and nominal-angle bias metrics.
+- 2026-02-16: Validation run via main.py Slurm pipeline succeeded (`run_postprocess_oscar`, job `390780`, COMPLETED 0:0): `num_samples_computed=100`, `num_samples_invalid=0`, quality-tier counts populated.
+- 2026-02-16: Syntax validation passed after implementation: `python3 -m py_compile main.py`.
+- 2026-02-16: User requested extending `case_H0.0083_D0.0083_flat_tilt_T25.0_m0.0002` from `t=2` to `t=7` using pipeline flow.
+- 2026-02-16: Updated case runtime horizon to 7s by setting `case_params.json` `duration=7.0` and patching `system/controlDict` via `_patch_control_dict_for_speed` (`endTime 7`, runtime write settings aligned with manager defaults).
+- 2026-02-16: First resume submission via `main.run_case_oscar` (job `393555`) completed quickly with no time advance; root cause was parallel resume without existing `processor*` dirs (`reconstructPar` fatal: `No processor* directories found`).
+- 2026-02-16: Prepared serial-to-parallel continuation on compute via Slurm decompose job `393572` (`of13 decomposePar -latestTime -force`), producing `processor0..processor7` at time `2`.
+- 2026-02-16: Re-submitted simulation through main.py pipeline as parallel resume; job `393575` is running.
+- 2026-02-16: User switched target to 70° case (`case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0003`) and requested parallel continuation to `t=7`.
+- 2026-02-16: Updated target case runtime horizon to `duration=7.0` (`case_params.json`) and patched `system/controlDict` accordingly (`endTime 7`) via main.py helpers.
+- 2026-02-16: Submitted Slurm prep decompose job `393597` (`of13 decomposePar -latestTime -force`) to create `processor0..processor7` from existing serial `t=2` state.
+- 2026-02-16: Submitted parallel resume via main.py pipeline (`main.run_case_oscar`), job `393601` (RUNNING).
+- 2026-02-16: Added Build Case UX feature in `main.py`: `menu_build_cases` now supports `copy`/`load` to import parameters from an existing `case_*` folder and continue editing before build.
+- 2026-02-16: Added helper `_load_build_values_from_case(case_dir)` to merge source case parameters over `DEFAULTS` with categorical normalization (`geo`, `mesher`).
+- 2026-02-16: Copy action resets sweep overrides and returns user to normal tweak flow; syntax check passed (`python3 -m py_compile main.py`).
+- 2026-02-16: Performed non-destructive interactive dry run of new build-menu `copy` feature (`main.py`): selected source case by name, verified config values were loaded, then canceled before build.

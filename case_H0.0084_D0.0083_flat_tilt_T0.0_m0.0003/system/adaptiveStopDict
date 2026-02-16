@@ -10,46 +10,20 @@ FoamFile
     format      ascii;
     class       dictionary;
     location    "system";
-    object      controlDict;
+    object      adaptiveStopDict;
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-solver          incompressibleVoF;
-
-startFrom       latestTime;
-
-startTime       0;
-
-stopAt          endTime;
-
-endTime 7;
-
-// Start with a conservative dt to avoid blowing up on the first step.
-// `maxDeltaT` still caps the growth (set via the manager's dt parameter).
-deltaT          0.0001;
-
-writeControl    adjustableRunTime;
-
-writeInterval   0.1;
-
-purgeWrite      0;
-
-writeFormat     binary;
-
-writePrecision  6;
-
-writeCompression off;
-
-timeFormat      general;
-
-timePrecision   6;
-
-runTimeModifiable yes;
-
-adjustTimeStep  yes;
-
-maxCo           1.0;
-maxAlphaCo      0.5;
-maxDeltaT       0.01;
+adaptiveStop
+{
+    enabled         yes;
+    normU           5e-5;
+    maxDeltaAlpha   1e-4;
+    minTime         0.5;
+    window          0.5;
+    minSamples      3;
+    checkInterval   0.5;
+    logInterval     30;
+}
 
 // ************************************************************************* //

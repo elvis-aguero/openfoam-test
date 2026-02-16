@@ -2,7 +2,7 @@
   "D": 0.0083,
   "H": 0.0083,
   "dt": 0.001,
-  "duration": 2.0,
+  "duration": 7.0,
   "geo": "flat",
   "mesh": 0.0002,
   "mesher": "snappy",

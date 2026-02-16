@@ -10,46 +10,27 @@ FoamFile
     format      ascii;
     class       dictionary;
     location    "system";
-    object      controlDict;
+    object      decomposeParDict;
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-solver          incompressibleVoF;
+numberOfSubdomains 16; // Overwritten by main.py
 
-startFrom       latestTime;
+method          scotch;
 
-startTime       0;
+scotchCoeffs
+{
+    // n               (1 1 1);
+}
 
-stopAt          endTime;
+manualCoeffs
+{
+    dataFile        "";
+}
 
-endTime 7;
+distributed     no;
 
-// Start with a conservative dt to avoid blowing up on the first step.
-// `maxDeltaT` still caps the growth (set via the manager's dt parameter).
-deltaT          0.0001;
+roots           ( );
 
-writeControl    adjustableRunTime;
-
-writeInterval   0.1;
-
-purgeWrite      0;
-
-writeFormat     binary;
-
-writePrecision  6;
-
-writeCompression off;
-
-timeFormat      general;
-
-timePrecision   6;
-
-runTimeModifiable yes;
-
-adjustTimeStep  yes;
-
-maxCo           1.0;
-maxAlphaCo      0.5;
-maxDeltaT       0.01;
 
 // ************************************************************************* //
