@@ -118,3 +118,7 @@ When running built cases, emit a CSV with timestamp, normU, maxDeltaAlpha, inter
 - 2026-02-17: Submitted remaining T0.0 cases (`m0.001`, `m0.0008`) via jobs 394707-394710; `m0.001` completed and outputs regenerated.
 - 2026-02-17: Case `case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0008` cannot generate compare/extract plots because VTK OpenFOAM reader reports no mesh (`*.foam contains no meshes`), resulting in no `interface_compare` or snapshot outputs.
 - 2026-02-17: Final T0.0 coverage check: capillary-updated compare/snapshot outputs present for all T0.0 cases except `case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0008`; adaptive-stop convergence plots remain limited to cases with existing `adaptive_metrics.csv`.
+- 2026-02-17: Increased postprocessing figure font sizes for readability.
+- 2026-02-17: `circularTiltingTank/adaptive_stop.py` convergence summary figure now uses larger label/tick/note/suptitle sizes.
+- 2026-02-17: `main.py` contact-angle snapshot figure now uses larger axis labels, ticks, titles, legends, annotation text, and suptitle.
+- 2026-02-17: Syntax validation passed after font-size updates (`python3 -m py_compile circularTiltingTank/adaptive_stop.py main.py`).

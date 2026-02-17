@@ -2734,6 +2734,13 @@ def _write_contact_angle_snapshot_outputs(
     try:
         import matplotlib.pyplot as plt
 
+        label_fs = 13
+        tick_fs = 12
+        title_fs = 15
+        legend_fs = 11
+        note_fs = 11
+        suptitle_fs = 16
+
         theta_deg = np.asarray([r["theta_deg"] for r in rows_sorted], dtype=float)
         zeta = np.asarray([r["zeta_wall"] for r in rows_sorted], dtype=float)
         zeta_plot = zeta.copy()
@@ -2825,19 +2832,20 @@ def _write_contact_angle_snapshot_outputs(
                 transform=ax1.transAxes,
                 ha="left",
                 va="top",
-                fontsize=9,
+                fontsize=note_fs,
                 alpha=0.7,
             )
         if not np.any(of_valid) and not yl_ok:
-            ax1.text(0.5, 0.5, "No wall profile data", ha="center", va="center")
+            ax1.text(0.5, 0.5, "No wall profile data", ha="center", va="center", fontsize=note_fs)
 
         ax1.axhline(0.0, color="black", lw=0.8, alpha=0.35)
-        ax1.set_xlabel("theta (deg)")
-        ax1.set_ylabel(zeta_ylabel)
-        ax1.set_title("Triple-Point Comparison (OpenFOAM vs Young-Laplace)")
+        ax1.set_xlabel("theta (deg)", fontsize=label_fs)
+        ax1.set_ylabel(zeta_ylabel, fontsize=label_fs)
+        ax1.set_title("Triple-Point Comparison (OpenFOAM vs Young-Laplace)", fontsize=title_fs)
+        ax1.tick_params(axis="both", labelsize=tick_fs)
         ax1.grid(True, alpha=0.25)
         if np.any(of_valid) or yl_ok:
-            ax1.legend(loc="best", fontsize=8)
+            ax1.legend(loc="best", fontsize=legend_fs)
 
         # Right: keep contact-angle boxplot.
         if all_angles.size > 0:
@@ -2880,14 +2888,22 @@ def _write_contact_angle_snapshot_outputs(
             note = f"mean(all)={mean_v:.2f}\nQ1={q1:.2f}\nmedian={med:.2f}\nQ3={q3:.2f}\nN={all_angles.size}"
             if theta_nominal_deg is not None:
                 note += f"\ntheta0={theta_nominal_deg:.2f}"
-            ax2.text(1.15, med, note, fontsize=9, va="center")
-            ax2.legend(loc="best", fontsize=8)
+            ax2.text(1.15, med, note, fontsize=note_fs, va="center")
+            ax2.legend(loc="best", fontsize=legend_fs)
         else:
-            ax2.text(0.5, 0.5, "No computed contact-angle samples", ha="center", va="center")
+            ax2.text(
+                0.5,
+                0.5,
+                "No computed contact-angle samples",
+                ha="center",
+                va="center",
+                fontsize=note_fs,
+            )
             ax2.set_xticks([])
 
-        ax2.set_ylabel("contact angle (deg)")
-        ax2.set_title("Contact Angle Distribution (all samples, tiered quality)")
+        ax2.set_ylabel("contact angle (deg)", fontsize=label_fs)
+        ax2.set_title("Contact Angle Distribution (all samples, tiered quality)", fontsize=title_fs)
+        ax2.tick_params(axis="both", labelsize=tick_fs)
         ax2.grid(True, axis="y", alpha=0.25)
 
         if capillary_time is not None:
@@ -2899,10 +2915,11 @@ def _write_contact_angle_snapshot_outputs(
             tcap = 0.0
         if tcap > 0.0:
             fig.suptitle(
-                f"Interface Snapshot Metrics at t={snapshot_time:.4g} s (t/t_cap={snapshot_time / tcap:.4g})"
+                f"Interface Snapshot Metrics at t={snapshot_time:.4g} s (t/t_cap={snapshot_time / tcap:.4g})",
+                fontsize=suptitle_fs,
             )
         else:
-            fig.suptitle(f"Interface Snapshot Metrics at t={snapshot_time:.4g} s")
+            fig.suptitle(f"Interface Snapshot Metrics at t={snapshot_time:.4g} s", fontsize=suptitle_fs)
         fig.savefig(os.path.join(results_dir, "interface_contact_angle_snapshot_latest.png"), dpi=150)
         plt.close(fig)
     except Exception:

@@ -396,6 +396,11 @@ def _write_convergence_summary_figure(csv_path, fig_path, case_dir=None):
     except Exception:
         return False
 
+    label_fs = 12
+    tick_fs = 11
+    title_fs = 15
+    note_fs = 11
+
     n_metrics = len(metric_keys)
     n_cols = 1 if n_metrics == 1 else 2
     n_rows = int(math.ceil(n_metrics / n_cols))
@@ -456,6 +461,7 @@ def _write_convergence_summary_figure(csv_path, fig_path, case_dir=None):
                     ha="center",
                     va="center",
                     transform=ax.transAxes,
+                    fontsize=note_fs,
                 )
         else:
             if xs:
@@ -468,9 +474,11 @@ def _write_convergence_summary_figure(csv_path, fig_path, case_dir=None):
                     ha="center",
                     va="center",
                     transform=ax.transAxes,
+                    fontsize=note_fs,
                 )
 
-        ax.set_ylabel(y_label)
+        ax.set_ylabel(y_label, fontsize=label_fs)
+        ax.tick_params(axis="both", labelsize=tick_fs)
         ax.grid(True, alpha=0.25)
 
     for j in range(n_metrics, len(axes_flat)):
@@ -478,9 +486,9 @@ def _write_convergence_summary_figure(csv_path, fig_path, case_dir=None):
 
     for ax in axes[-1]:
         if ax.get_visible():
-            ax.set_xlabel(x_axis_label)
+            ax.set_xlabel(x_axis_label, fontsize=label_fs)
 
-    fig.suptitle("Adaptive Stop Convergence Summary")
+    fig.suptitle("Adaptive Stop Convergence Summary", fontsize=title_fs)
     out_dir = os.path.dirname(fig_path)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
