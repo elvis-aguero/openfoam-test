@@ -2908,23 +2908,28 @@ def _write_contact_angle_snapshot_outputs(
             ax1.text(0.5, 0.5, "No wall profile data", ha="center", va="center", fontsize=note_fs)
 
         ax1.axhline(0.0, color="black", lw=0.8, alpha=0.35)
+        ax1.set_xlim(-180.0, 180.0)
+        ax1.set_xticks([-180, -90, 0, 90, 180])
+        ax1.margins(x=0.0)
         ax1.set_xlabel("theta (deg)", fontsize=label_fs)
         ax1.set_ylabel(zeta_ylabel, fontsize=label_fs)
-        ax1.set_title("Triple-Point Comparison (OpenFOAM vs Young-Laplace)", fontsize=title_fs)
+        ax1.set_title("Wall Profile", fontsize=title_fs)
         ax1.tick_params(axis="both", labelsize=tick_fs)
         ax1.grid(True, alpha=0.25)
         if np.any(of_valid) or yl_ok:
             ax1.legend(loc="best", fontsize=legend_fs)
 
         # Minimal inline colorbar, aligned with left-panel x-axis and unlabeled.
-        cax = ax1.inset_axes([0.08, 0.03, 0.84, 0.03])
+        cax = ax1.inset_axes([0.0, 0.02, 1.0, 0.02])
         cbar = fig.colorbar(
             phase_mappable,
             cax=cax,
             orientation="horizontal",
         )
-        cbar.set_ticks([-180, 0, 180])
-        cbar.ax.tick_params(labelsize=max(8, tick_fs - 2), length=2, pad=1)
+        cbar.set_ticks([])
+        cbar.ax.set_xticks([])
+        cbar.ax.tick_params(length=0)
+        cbar.outline.set_visible(False)
 
         # Right: side-by-side contact-angle boxplots with phase-colored points.
         yl_rows_sorted = []
@@ -2978,6 +2983,13 @@ def _write_contact_angle_snapshot_outputs(
                 patch_artist=True,
                 showmeans=True,
                 meanline=False,
+                meanprops={
+                    "marker": "o",
+                    "markerfacecolor": "none",
+                    "markeredgecolor": "white",
+                    "markeredgewidth": 1.4,
+                    "markersize": 6,
+                },
             )
             for patch, color in zip(bp["boxes"], box_colors):
                 patch.set_facecolor(color)
@@ -3033,7 +3045,6 @@ def _write_contact_angle_snapshot_outputs(
             y_span = 1.0
             y_invalid = -0.3
 
-        invalid_handles = []
         if of_invalid_count > 0:
             xj = 1.0 + rng.uniform(-0.08, 0.08, size=of_invalid_count)
             ax2.scatter(
@@ -3043,18 +3054,6 @@ def _write_contact_angle_snapshot_outputs(
                 color="#8a8a8a",
                 alpha=0.8,
                 zorder=3,
-            )
-            invalid_handles.append(
-                Line2D(
-                    [0],
-                    [0],
-                    marker="o",
-                    color="none",
-                    markerfacecolor="#8a8a8a",
-                    markeredgecolor="#8a8a8a",
-                    markersize=6,
-                    label=f"OpenFOAM invalid ({of_invalid_count})",
-                )
             )
         if has_yl_rows and yl_invalid_count > 0:
             xj = 2.0 + rng.uniform(-0.08, 0.08, size=yl_invalid_count)
@@ -3066,63 +3065,36 @@ def _write_contact_angle_snapshot_outputs(
                 alpha=0.8,
                 zorder=3,
             )
-            invalid_handles.append(
-                Line2D(
-                    [0],
-                    [0],
-                    marker="o",
-                    color="none",
-                    markerfacecolor="#8a8a8a",
-                    markeredgecolor="#8a8a8a",
-                    markersize=6,
-                    label=f"Young-Laplace invalid ({yl_invalid_count})",
-                )
-            )
 
         if finite_groups:
             ax2.set_ylim(y_min - 0.2 * y_span, y_max + 0.2 * y_span)
         elif (of_invalid_count + yl_invalid_count) > 0:
             ax2.set_ylim(y_invalid - 0.6, y_invalid + 0.6)
 
-        if invalid_handles:
-            ax2.legend(handles=invalid_handles, loc="best", fontsize=legend_fs)
-
-        def _box_note(vals, source_label, add_theta0=False):
-            if vals.size == 0:
-                return f"{source_label}\nN=0"
-            q1, med, q3 = np.percentile(vals, [25, 50, 75])
-            mean_v = float(np.mean(vals))
-            note = (
-                f"{source_label}\nmean={mean_v:.2f}\nQ1={q1:.2f}\n"
-                f"median={med:.2f}\nQ3={q3:.2f}\nN={vals.size}"
-            )
-            if add_theta0 and theta_nominal_deg is not None:
-                note += f"\ntheta0={theta_nominal_deg:.2f}"
-            return note
-
-        if of_angles.size > 0:
-            y_of = float(np.median(of_angles))
-        else:
-            y_of = y_invalid
-        if yl_angles.size > 0:
-            y_yl = float(np.median(yl_angles))
-        else:
-            y_yl = y_invalid
-
-        ax2.text(
-            1.22,
-            y_of,
-            _box_note(of_angles, "OpenFOAM", add_theta0=True),
-            fontsize=note_fs,
-            va="center",
-        )
-        ax2.text(
-            2.22,
-            y_yl,
-            _box_note(yl_angles, "Young-Laplace", add_theta0=False),
-            fontsize=note_fs,
-            va="center",
-        )
+        legend_handles = [
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="none",
+                markerfacecolor=phase_cmap(0.78),
+                markeredgecolor="none",
+                markersize=6,
+                label="points: color = phase",
+            ),
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="none",
+                markerfacecolor="none",
+                markeredgecolor="white",
+                markeredgewidth=1.4,
+                markersize=6,
+                label="white hollow circle: boxplot mean (each source)",
+            ),
+        ]
+        ax2.legend(handles=legend_handles, loc="best", fontsize=legend_fs)
 
         if not has_yl_rows:
             ax2.text(
@@ -3137,24 +3109,11 @@ def _write_contact_angle_snapshot_outputs(
             )
 
         ax2.set_ylabel("contact angle (deg)", fontsize=label_fs)
-        ax2.set_title("Contact Angle Distribution (OpenFOAM vs Young-Laplace)", fontsize=title_fs)
+        ax2.set_title("Contact Angle", fontsize=title_fs)
         ax2.tick_params(axis="both", labelsize=tick_fs)
         ax2.grid(True, axis="y", alpha=0.25)
 
-        if capillary_time is not None:
-            try:
-                tcap = float(capillary_time)
-            except Exception:
-                tcap = 0.0
-        else:
-            tcap = 0.0
-        if tcap > 0.0:
-            fig.suptitle(
-                f"Interface Snapshot Metrics at t={snapshot_time:.4g} s (t/t_cap={snapshot_time / tcap:.4g})",
-                fontsize=suptitle_fs,
-            )
-        else:
-            fig.suptitle(f"Interface Snapshot Metrics at t={snapshot_time:.4g} s", fontsize=suptitle_fs)
+        fig.suptitle(f"Snapshot t={snapshot_time:.4g} s", fontsize=suptitle_fs)
         fig.savefig(os.path.join(results_dir, "interface_contact_angle_snapshot_latest.png"), dpi=150)
         plt.close(fig)
     except Exception:

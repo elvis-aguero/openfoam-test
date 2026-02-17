@@ -141,3 +141,11 @@ When running built cases, emit a CSV with timestamp, normU, maxDeltaAlpha, inter
 - 2026-02-17: Submitted Slurm extract jobs 400017-400026 for 10 targets (9x T0.0 + `case_H0.0082_D0.0083_flat_tilt_T10.0_m0.0002`).
 - 2026-02-17: Verified regenerated snapshot PNG timestamps for 9/10 targets (all except `case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0008`, which remains missing due no mesh in `.foam`).
 - 2026-02-17: Some jobs marked FAILED in Slurm due post-run `xvfb-run` cleanup behavior, but corresponding logs indicate successful extract completion and PNG regeneration for cases with updated timestamps.
+- 2026-02-17: Refined contact-angle figure aesthetics per user feedback: removed verbose per-box text annotations; added concise right-panel legend for phase-colored points and white hollow mean markers.
+- 2026-02-17: Made left-panel phase colorbar fully minimal and inline: no label, no ticks, no outline; inset spans full axis width to align with x-axis mapping.
+- 2026-02-17: Forced left-panel theta domain to exact `[-180, 180]` (fixed x-limits, matching ticks, zero x-margin) to eliminate whitespace ambiguity between curves and colorbar.
+- 2026-02-17: Simplified titles to reduce verbosity (`Wall Profile`, `Contact Angle`, and compact suptitle `Snapshot t=... s`).
+- 2026-02-17: Slurm validation run for updated styling succeeded (`run_postprocess_oscar`, extract job `400957`, COMPLETED) and regenerated snapshot PNG for `case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0002`.
+- 2026-02-17: Clarified right-panel legend wording (`white hollow circle: boxplot mean (each source)`) and reran retroactive extract for target set.
+- 2026-02-17: Submitted Slurm extract jobs 400972-400981 for 10 targets (9x T0.0 + `case_H0.0082_D0.0083_flat_tilt_T10.0_m0.0002`) after legend clarification.
+- 2026-02-17: Snapshot PNGs regenerated for 9/10 targets with updated timestamps (~10:46 local); `case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0008` remains impossible due missing mesh in `.foam`.
