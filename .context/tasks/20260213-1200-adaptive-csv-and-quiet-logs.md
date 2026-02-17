@@ -92,3 +92,10 @@ When running built cases, emit a CSV with timestamp, normU, maxDeltaAlpha, inter
 - 2026-02-16: Added helper functions `_compute_young_laplace_interface_points` and `_sample_wall_profile_from_points` and refactored analytical extraction to reuse the new Young-Laplace point generator.
 - 2026-02-16: Validated helper execution on case `case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0003` (YL points generated; 100/100 finite wall-profile samples) and syntax check passed.
 - 2026-02-16: Ran full headless extract dry run on `case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0002` with new snapshot plotting logic; completed successfully and regenerated `interface_contact_angle_snapshot_latest.png` plus summary CSV outputs.
+- 2026-02-16: Corrected subplot assignment per user feedback: left subplot is now the triple-point profile comparison (OpenFOAM vs Young-Laplace), right subplot restored to contact-angle boxplot.
+- 2026-02-16: Verified with `python3 -m py_compile main.py` and headless extract dry run on `case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0002`; snapshot PNG regenerated successfully.
+- 2026-02-16: Confirmed final intent after user escalation: Young-Laplace comparison on left subplot only, boxplot retained on right subplot; re-ran headless extract to validate.
+- 2026-02-16: Added `.foam` naming helper in `main.py` (`_preferred_foam_file`, `_ensure_case_foam_file`) so readers use `<case_folder_name>.foam` instead of hard-coded `case.foam`.
+- 2026-02-16: Updated all OpenFOAM reader entry points in `main.py` to resolve `.foam` via `_ensure_case_foam_file`.
+- 2026-02-16: Retroactive migration executed across existing `case_*` folders: renamed legacy `case.foam`/single-alt `.foam` files to folder-matching `<case_name>.foam` (34 renames, 2 created placeholders where missing).
+- 2026-02-16: Post-migration validation passed (`python3 -m py_compile main.py`) and headless extract dry run succeeded on `case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0002`.

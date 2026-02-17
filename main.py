@@ -200,6 +200,60 @@ def format_time(hours):
     m = total_minutes % 60
     return f"{h:02d}:{m:02d}:00"
 
+def _preferred_foam_file(case_dir):
+    case_name = os.path.basename(os.path.abspath(case_dir.rstrip(os.sep)))
+    if not case_name:
+        case_name = "case"
+    return os.path.join(case_dir, f"{case_name}.foam")
+
+def _ensure_case_foam_file(case_dir):
+    """
+    Ensure each case uses a .foam file named after its folder.
+    Legacy `case.foam` (or single alternate .foam) is migrated in place.
+    """
+    preferred = _preferred_foam_file(case_dir)
+    if os.path.exists(preferred):
+        return preferred
+
+    legacy = os.path.join(case_dir, "case.foam")
+    if os.path.exists(legacy):
+        try:
+            os.replace(legacy, preferred)
+            return preferred
+        except Exception:
+            # Fallback: keep legacy if rename fails.
+            return legacy
+
+    try:
+        foam_files = sorted(
+            [
+                f
+                for f in os.listdir(case_dir)
+                if f.endswith(".foam") and os.path.isfile(os.path.join(case_dir, f))
+            ]
+        )
+    except Exception:
+        foam_files = []
+
+    if len(foam_files) == 1:
+        src = os.path.join(case_dir, foam_files[0])
+        if os.path.abspath(src) != os.path.abspath(preferred):
+            try:
+                os.replace(src, preferred)
+                return preferred
+            except Exception:
+                return src
+        return preferred
+
+    # If none (or ambiguous), create preferred placeholder.
+    try:
+        with open(preferred, "w", encoding="utf-8"):
+            pass
+        return preferred
+    except Exception:
+        # Absolute last resort: return legacy path.
+        return legacy
+
 def _patch_alpha_water_bc(case_dir):
     path = os.path.join(case_dir, "0", "alpha.water")
     if not os.path.exists(path):
@@ -1418,11 +1472,7 @@ def generate_video(case_dir):
 
     print(f"  🎬 Generating video for {case_dir} using PyVista...")
     
-    foam_file = os.path.join(case_dir, "case.foam")
-    if not os.path.exists(foam_file):
-        # Create empty .foam file if it doesn't exist (PyVista needs it)
-        with open(foam_file, 'w') as f:
-            pass
+    foam_file = _ensure_case_foam_file(case_dir)
             
     try:
         reader = vtkOpenFOAMReader()
@@ -1615,10 +1665,7 @@ def generate_lateral_video(case_dir):
 
     print(f"  🎬 Generating lateral video for {case_dir}...")
     
-    foam_file = os.path.join(case_dir, "case.foam")
-    if not os.path.exists(foam_file):
-        with open(foam_file, 'w') as f:
-            pass
+    foam_file = _ensure_case_foam_file(case_dir)
             
     try:
         reader = pv.POpenFOAMReader(foam_file)
@@ -1766,10 +1813,7 @@ def extract_interface(case_dir, vtp_mode="none", quality_profile="balanced"):
         f"(vtp_mode={vtp_mode}, quality_profile={quality_profile})..."
     )
     
-    foam_file = os.path.join(case_dir, "case.foam")
-    if not os.path.exists(foam_file):
-        with open(foam_file, 'w') as f:
-            pass
+    foam_file = _ensure_case_foam_file(case_dir)
             
     try:
         reader = pv.POpenFOAMReader(foam_file)
@@ -2649,12 +2693,11 @@ def _write_contact_angle_snapshot_outputs(
     with open(quality_path, "w", encoding="utf-8") as f:
         f.write("\n".join(quality_lines))
 
-    # Figure: zeta(theta) profile + contact-angle boxplot with quality overlays.
+    # Figure: left = triple-point comparison, right = contact-angle boxplot.
     try:
         import matplotlib.pyplot as plt
 
         theta_deg = np.asarray([r["theta_deg"] for r in rows_sorted], dtype=float)
-        theta_rad = np.asarray([r["theta_rad"] for r in rows_sorted], dtype=float)
         zeta = np.asarray([r["zeta_wall"] for r in rows_sorted], dtype=float)
         zeta_plot = zeta.copy()
         zeta_ylabel = "interface height zeta at wall (m)"
@@ -2698,35 +2741,25 @@ def _write_contact_angle_snapshot_outputs(
             except Exception:
                 yl_theta_deg = None
                 yl_zeta_plot = None
-        tiers = [r["quality_tier"] for r in rows_sorted]
-        angle = np.asarray([r["contact_angle_deg"] for r in rows_sorted], dtype=float)
-        color_by_tier = {"high": "#2a9d8f", "medium": "#f4a261", "low": "#e76f51", "invalid": "#7f8c8d"}
 
+        tiers = [r["quality_tier"] for r in rows_sorted]
+        color_by_tier = {"high": "#2a9d8f", "medium": "#f4a261", "low": "#e76f51", "invalid": "#7f8c8d"}
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11.5, 4.8), constrained_layout=True)
 
-        valid_profile = np.isfinite(theta_deg) & np.isfinite(zeta_plot)
-        if np.any(valid_profile):
-            ax1.plot(theta_deg[valid_profile], zeta_plot[valid_profile], color="#1d3557", lw=1.2, alpha=0.6)
-            for tier_name in ("high", "medium", "low", "invalid"):
-                m = np.asarray(
-                    [valid_profile[j] and tiers[j] == tier_name for j in range(len(rows_sorted))],
-                    dtype=bool,
-                )
-                if np.any(m):
-                    ax1.scatter(
-                        theta_deg[m],
-                        zeta_plot[m],
-                        s=10,
-                        alpha=0.8,
-                        color=color_by_tier[tier_name],
-                        label=tier_name,
-                    )
-        ax1.set_xlabel("theta (deg)")
-        ax1.set_ylabel(zeta_ylabel)
-        ax1.set_title("Wall Interface Profile (latest snapshot)")
-        ax1.axhline(0.0, color="black", lw=0.8, alpha=0.35)
-        ax1.grid(True, alpha=0.25)
-        ax1.legend(loc="best", fontsize=8)
+        # Left: triple-point/wall profile comparison, same orientation for both curves.
+        of_valid = np.isfinite(theta_deg) & np.isfinite(zeta_plot)
+        if np.any(of_valid):
+            order = np.argsort(theta_deg[of_valid])
+            xof = theta_deg[of_valid][order]
+            yof = zeta_plot[of_valid][order]
+            ax1.plot(
+                xof,
+                yof,
+                color="#1d3557",
+                lw=1.5,
+                alpha=0.9,
+                label="OpenFOAM (wall)",
+            )
 
         yl_ok = (
             yl_theta_deg is not None
@@ -2735,22 +2768,12 @@ def _write_contact_angle_snapshot_outputs(
             and yl_theta_deg.size > 0
         )
         if yl_ok:
-            of_valid = np.isfinite(theta_deg) & np.isfinite(zeta_plot)
-            if np.any(of_valid):
-                ax2.plot(
-                    theta_deg[of_valid],
-                    zeta_plot[of_valid],
-                    color="#1d3557",
-                    lw=1.5,
-                    alpha=0.85,
-                    label="OpenFOAM (wall)",
-                )
             yl_valid = np.isfinite(yl_theta_deg) & np.isfinite(yl_zeta_plot)
             if np.any(yl_valid):
                 order = np.argsort(yl_theta_deg[yl_valid])
                 xyl = yl_theta_deg[yl_valid][order]
                 yyl = yl_zeta_plot[yl_valid][order]
-                ax2.plot(
+                ax1.plot(
                     xyl,
                     yyl,
                     color="#d62828",
@@ -2759,57 +2782,78 @@ def _write_contact_angle_snapshot_outputs(
                     linestyle="--",
                     label="Young-Laplace (wall)",
                 )
-            ax2.axhline(0.0, color="black", lw=0.8, alpha=0.35)
-            ax2.set_xlabel("theta (deg)")
-            ax2.set_ylabel(zeta_ylabel)
-            ax2.set_title("Triple-Point Comparison (OpenFOAM vs Young-Laplace)")
-            ax2.grid(True, alpha=0.25)
-            if np.any(of_valid) or np.any(yl_valid):
-                ax2.legend(loc="best", fontsize=8)
         else:
-            if all_angles.size > 0:
-                bp = ax2.boxplot(
-                    all_angles,
-                    vert=True,
-                    patch_artist=True,
-                    showmeans=True,
-                    meanline=False,
-                    tick_labels=["all computed"],
+            ax1.text(
+                0.03,
+                0.95,
+                "YL unavailable",
+                transform=ax1.transAxes,
+                ha="left",
+                va="top",
+                fontsize=9,
+                alpha=0.7,
+            )
+        if not np.any(of_valid) and not yl_ok:
+            ax1.text(0.5, 0.5, "No wall profile data", ha="center", va="center")
+
+        ax1.axhline(0.0, color="black", lw=0.8, alpha=0.35)
+        ax1.set_xlabel("theta (deg)")
+        ax1.set_ylabel(zeta_ylabel)
+        ax1.set_title("Triple-Point Comparison (OpenFOAM vs Young-Laplace)")
+        ax1.grid(True, alpha=0.25)
+        if np.any(of_valid) or yl_ok:
+            ax1.legend(loc="best", fontsize=8)
+
+        # Right: keep contact-angle boxplot.
+        if all_angles.size > 0:
+            bp = ax2.boxplot(
+                all_angles,
+                vert=True,
+                patch_artist=True,
+                showmeans=True,
+                meanline=False,
+                tick_labels=["all computed"],
+            )
+            for patch in bp["boxes"]:
+                patch.set_facecolor("#8ecae6")
+                patch.set_alpha(0.6)
+
+            plot_rng = np.random.default_rng(0)
+            for tier_name in ("high", "medium", "low"):
+                vals = np.asarray(
+                    [
+                        rows_sorted[j]["contact_angle_deg"]
+                        for j in range(len(rows_sorted))
+                        if rows_sorted[j]["quality_tier"] == tier_name
+                        and np.isfinite(rows_sorted[j]["contact_angle_deg"])
+                    ],
+                    dtype=float,
                 )
-                for patch in bp["boxes"]:
-                    patch.set_facecolor("#8ecae6")
-                    patch.set_alpha(0.6)
-
-                # Overlay tiered points with small horizontal jitter.
-                plot_rng = np.random.default_rng(0)
-                for tier_name in ("high", "medium", "low"):
-                    vals = np.asarray(
-                        [
-                            rows_sorted[j]["contact_angle_deg"]
-                            for j in range(len(rows_sorted))
-                            if rows_sorted[j]["quality_tier"] == tier_name
-                            and np.isfinite(rows_sorted[j]["contact_angle_deg"])
-                        ],
-                        dtype=float,
+                if vals.size > 0:
+                    xj = 1.0 + plot_rng.uniform(-0.06, 0.06, size=vals.size)
+                    ax2.scatter(
+                        xj,
+                        vals,
+                        s=14,
+                        alpha=0.75,
+                        color=color_by_tier[tier_name],
+                        label=f"{tier_name} ({vals.size})",
                     )
-                    if vals.size > 0:
-                        xj = 1.0 + plot_rng.uniform(-0.06, 0.06, size=vals.size)
-                        ax2.scatter(xj, vals, s=14, alpha=0.75, color=color_by_tier[tier_name], label=f"{tier_name} ({vals.size})")
 
-                q1, med, q3 = np.percentile(all_angles, [25, 50, 75])
-                mean_v = np.mean(all_angles)
-                note = f"mean(all)={mean_v:.2f}\nQ1={q1:.2f}\nmedian={med:.2f}\nQ3={q3:.2f}\nN={all_angles.size}"
-                if theta_nominal_deg is not None:
-                    note += f"\ntheta0={theta_nominal_deg:.2f}"
-                ax2.text(1.15, med, note, fontsize=9, va="center")
-                ax2.legend(loc="best", fontsize=8)
-            else:
-                ax2.text(0.5, 0.5, "No computed contact-angle samples", ha="center", va="center")
-                ax2.set_xticks([])
+            q1, med, q3 = np.percentile(all_angles, [25, 50, 75])
+            mean_v = np.mean(all_angles)
+            note = f"mean(all)={mean_v:.2f}\nQ1={q1:.2f}\nmedian={med:.2f}\nQ3={q3:.2f}\nN={all_angles.size}"
+            if theta_nominal_deg is not None:
+                note += f"\ntheta0={theta_nominal_deg:.2f}"
+            ax2.text(1.15, med, note, fontsize=9, va="center")
+            ax2.legend(loc="best", fontsize=8)
+        else:
+            ax2.text(0.5, 0.5, "No computed contact-angle samples", ha="center", va="center")
+            ax2.set_xticks([])
 
-            ax2.set_ylabel("contact angle (deg)")
-            ax2.set_title("Contact Angle Distribution (all samples, tiered quality)")
-            ax2.grid(True, axis="y", alpha=0.25)
+        ax2.set_ylabel("contact angle (deg)")
+        ax2.set_title("Contact Angle Distribution (all samples, tiered quality)")
+        ax2.grid(True, axis="y", alpha=0.25)
 
         fig.suptitle(f"Interface Snapshot Metrics at t={snapshot_time:.4g} s")
         fig.savefig(os.path.join(results_dir, "interface_contact_angle_snapshot_latest.png"), dpi=150)
@@ -2821,10 +2865,7 @@ def _extract_openfoam_interface_latest(case_dir, results_dir):
     pv = _import_pyvista()
     import numpy as np
 
-    foam_file = os.path.join(case_dir, "case.foam")
-    if not os.path.exists(foam_file):
-        with open(foam_file, "w") as f:
-            pass
+    foam_file = _ensure_case_foam_file(case_dir)
 
     try:
         reader = pv.POpenFOAMReader(foam_file)
