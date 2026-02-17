@@ -113,3 +113,41 @@ Python: $(which python)
   ✅ Extraction complete.
 End: $(date)
 ------------------------------------------------------------
+## SLURM PROLOG ###############################################################
+##    Job ID : 394554
+##  Job Name : post_extract_case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0003
+##  Nodelist : node2308
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Mon Feb 16 07:14:22 PM EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: extract | Case: case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0003 | vtp_mode: none | quality_profile: balanced
+Date: $(date)
+Python: $(which python)
+## SLURM PROLOG ###############################################################
+##    Job ID : 394556
+##  Job Name : post_compare_case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0003
+##  Nodelist : node2308
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Mon Feb 16 07:14:31 PM EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: compare | Case: case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0003 | vtp_mode: none | quality_profile: balanced
+Date: $(date)
+Python: $(which python)
+  📊 Extracting interface for . using PyVista (vtp_mode=none, quality_profile=balanced)...
+  Processing 71 timesteps (R=0.00415)...
+    Processed 20/71
+    Processed 40/71
+    Processed 60/71
+  ✅ Saved contact-angle diagnostics (CSV + quality report + snapshot figure).
+  ✅ Extraction complete.
+End: $(date)
+------------------------------------------------------------
+  📊 Comparing analytical and OpenFOAM interfaces for ....
+  ✅ Comparison complete.
+/usr/bin/xvfb-run: line 186: kill: (3297556) - No such process

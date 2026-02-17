@@ -87,3 +87,8 @@ When running built cases, emit a CSV with timestamp, normU, maxDeltaAlpha, inter
 - 2026-02-16: Updated `interface_contact_angle_snapshot_latest.png` profile-axis normalization in `main.py`: left subplot now plots `(zeta_wall - z_still) / D`, where `z_still=H/2` from case parameters and `D` is case diameter (fallback `2*R_target`).
 - 2026-02-16: Added zero-reference guide line (`y=0`) to the profile panel to make positive/negative deviations from still level explicit.
 - 2026-02-16: Syntax validation passed after update: `python3 -m py_compile main.py`.
+- 2026-02-16: Updated snapshot figure right panel in `main.py` to show triple-point wall-profile comparison (OpenFOAM vs Young-Laplace) in place of the boxplot when Young-Laplace data is available; fallback boxplot retained if analytical evaluation fails.
+- 2026-02-16: Added Young-Laplace wall-profile sampling at the same theta coordinates used by contact-angle rows and passed through to `_write_contact_angle_snapshot_outputs` as `yl_profile`.
+- 2026-02-16: Added helper functions `_compute_young_laplace_interface_points` and `_sample_wall_profile_from_points` and refactored analytical extraction to reuse the new Young-Laplace point generator.
+- 2026-02-16: Validated helper execution on case `case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0003` (YL points generated; 100/100 finite wall-profile samples) and syntax check passed.
+- 2026-02-16: Ran full headless extract dry run on `case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0002` with new snapshot plotting logic; completed successfully and regenerated `interface_contact_angle_snapshot_latest.png` plus summary CSV outputs.

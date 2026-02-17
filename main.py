@@ -1904,6 +1904,22 @@ def extract_interface(case_dir, vtp_mode="none", quality_profile="balanced"):
             n_samples=100,
             quality_profile=quality_profile,
         )
+        yl_profile = None
+        try:
+            yl_pts, _, _ = _compute_young_laplace_interface_points(case_dir)
+            theta_samples = [r.get("theta_rad") for r in angle_rows]
+            yl_zeta = _sample_wall_profile_from_points(
+                yl_pts,
+                R_target,
+                theta_samples,
+            )
+            if yl_zeta is not None:
+                yl_profile = {
+                    "theta_rad": theta_samples,
+                    "zeta_wall": yl_zeta,
+                }
+        except Exception:
+            yl_profile = None
         snap_t = latest_interface_time if latest_interface_time is not None else latest_time
         _write_contact_angle_snapshot_outputs(
             results_dir,
@@ -1913,8 +1929,9 @@ def extract_interface(case_dir, vtp_mode="none", quality_profile="balanced"):
             thresholds=angle_meta,
             diameter=diameter,
             still_level=still_level,
+            yl_profile=yl_profile,
         )
-        print("  ✅ Saved contact-angle diagnostics (CSV + quality report + boxplot).")
+        print("  ✅ Saved contact-angle diagnostics (CSV + quality report + snapshot figure).")
     else:
         print("  ⚠️  Latest interface missing; skipped contact-angle diagnostics.")
         
@@ -2085,6 +2102,64 @@ def _eval_periodic_wall_model(coeff, x_scale, theta_val, n_harmonics):
     zeta_wall = float(np.dot(coeff[0], b))
     slope = float(np.dot(coeff[1], b) / max(x_scale, 1e-12))
     return zeta_wall, slope
+
+
+def _sample_wall_profile_from_points(
+    points,
+    R_target,
+    theta_samples_rad,
+    radial_inner_frac=0.98,
+    theta_window_scale=1.2,
+):
+    import numpy as np
+
+    if points is None or len(points) == 0 or theta_samples_rad is None:
+        return None
+
+    pts = np.asarray(points, dtype=float)
+    if pts.ndim != 2 or pts.shape[1] < 3:
+        return None
+    theta_samples = np.asarray(theta_samples_rad, dtype=float)
+    if theta_samples.size == 0:
+        return np.asarray([], dtype=float)
+
+    x = pts[:, 0]
+    y = pts[:, 1]
+    z = pts[:, 2]
+    r = np.sqrt(x * x + y * y)
+    theta = np.arctan2(y, x)
+
+    wall_mask = r >= (R_target * radial_inner_frac)
+    if not np.any(wall_mask):
+        # fallback: use the outermost 10% radii as "near-wall"
+        r_cut = np.quantile(r, 0.9)
+        wall_mask = r >= r_cut
+    if not np.any(wall_mask):
+        return np.full(theta_samples.shape, np.nan, dtype=float)
+
+    tw = theta[wall_mask]
+    zw = z[wall_mask]
+    if tw.size == 0:
+        return np.full(theta_samples.shape, np.nan, dtype=float)
+
+    dtheta = 2.0 * math.pi / max(float(theta_samples.size), 1.0)
+    half_window = theta_window_scale * dtheta
+
+    out = np.full(theta_samples.shape, np.nan, dtype=float)
+    for i, theta0 in enumerate(theta_samples):
+        d = np.abs((tw - theta0 + math.pi) % (2.0 * math.pi) - math.pi)
+        m = d <= half_window
+        if np.any(m):
+            out[i] = float(np.mean(zw[m]))
+            continue
+
+        # fallback: nearest few points in theta
+        k = min(8, tw.size)
+        if k <= 0:
+            continue
+        idx = np.argpartition(d, k - 1)[:k]
+        out[i] = float(np.mean(zw[idx]))
+    return out
 
 
 def _estimate_contact_angles_on_boundary(
@@ -2361,6 +2436,7 @@ def _write_contact_angle_snapshot_outputs(
     thresholds=None,
     diameter=None,
     still_level=None,
+    yl_profile=None,
 ):
     import numpy as np
 
@@ -2578,6 +2654,7 @@ def _write_contact_angle_snapshot_outputs(
         import matplotlib.pyplot as plt
 
         theta_deg = np.asarray([r["theta_deg"] for r in rows_sorted], dtype=float)
+        theta_rad = np.asarray([r["theta_rad"] for r in rows_sorted], dtype=float)
         zeta = np.asarray([r["zeta_wall"] for r in rows_sorted], dtype=float)
         zeta_plot = zeta.copy()
         zeta_ylabel = "interface height zeta at wall (m)"
@@ -2595,6 +2672,32 @@ def _write_contact_angle_snapshot_outputs(
                     zref = 0.0
                 zeta_plot = (zeta - zref) / dval
                 zeta_ylabel = "(zeta_wall - z_still) / D"
+
+        yl_theta_deg = None
+        yl_zeta_plot = None
+        if isinstance(yl_profile, dict):
+            try:
+                yl_theta_rad = np.asarray(yl_profile.get("theta_rad", []), dtype=float)
+                yl_zeta_wall = np.asarray(yl_profile.get("zeta_wall", []), dtype=float)
+                if yl_theta_rad.size > 0 and yl_theta_rad.size == yl_zeta_wall.size:
+                    yl_theta_deg = np.degrees(yl_theta_rad)
+                    yl_zeta_plot = yl_zeta_wall.copy()
+                    if diameter is not None:
+                        try:
+                            dval = float(diameter)
+                        except Exception:
+                            dval = 0.0
+                        if dval > 0.0:
+                            zref = 0.0
+                            try:
+                                if still_level is not None and np.isfinite(float(still_level)):
+                                    zref = float(still_level)
+                            except Exception:
+                                zref = 0.0
+                            yl_zeta_plot = (yl_zeta_wall - zref) / dval
+            except Exception:
+                yl_theta_deg = None
+                yl_zeta_plot = None
         tiers = [r["quality_tier"] for r in rows_sorted]
         angle = np.asarray([r["contact_angle_deg"] for r in rows_sorted], dtype=float)
         color_by_tier = {"high": "#2a9d8f", "medium": "#f4a261", "low": "#e76f51", "invalid": "#7f8c8d"}
@@ -2625,49 +2728,88 @@ def _write_contact_angle_snapshot_outputs(
         ax1.grid(True, alpha=0.25)
         ax1.legend(loc="best", fontsize=8)
 
-        if all_angles.size > 0:
-            bp = ax2.boxplot(
-                all_angles,
-                vert=True,
-                patch_artist=True,
-                showmeans=True,
-                meanline=False,
-                tick_labels=["all computed"],
-            )
-            for patch in bp["boxes"]:
-                patch.set_facecolor("#8ecae6")
-                patch.set_alpha(0.6)
-
-            # Overlay tiered points with small horizontal jitter.
-            plot_rng = np.random.default_rng(0)
-            for tier_name in ("high", "medium", "low"):
-                vals = np.asarray(
-                    [
-                        rows_sorted[j]["contact_angle_deg"]
-                        for j in range(len(rows_sorted))
-                        if rows_sorted[j]["quality_tier"] == tier_name
-                        and np.isfinite(rows_sorted[j]["contact_angle_deg"])
-                    ],
-                    dtype=float,
+        yl_ok = (
+            yl_theta_deg is not None
+            and yl_zeta_plot is not None
+            and yl_theta_deg.size == yl_zeta_plot.size
+            and yl_theta_deg.size > 0
+        )
+        if yl_ok:
+            of_valid = np.isfinite(theta_deg) & np.isfinite(zeta_plot)
+            if np.any(of_valid):
+                ax2.plot(
+                    theta_deg[of_valid],
+                    zeta_plot[of_valid],
+                    color="#1d3557",
+                    lw=1.5,
+                    alpha=0.85,
+                    label="OpenFOAM (wall)",
                 )
-                if vals.size > 0:
-                    xj = 1.0 + plot_rng.uniform(-0.06, 0.06, size=vals.size)
-                    ax2.scatter(xj, vals, s=14, alpha=0.75, color=color_by_tier[tier_name], label=f"{tier_name} ({vals.size})")
-
-            q1, med, q3 = np.percentile(all_angles, [25, 50, 75])
-            mean_v = np.mean(all_angles)
-            note = f"mean(all)={mean_v:.2f}\nQ1={q1:.2f}\nmedian={med:.2f}\nQ3={q3:.2f}\nN={all_angles.size}"
-            if theta_nominal_deg is not None:
-                note += f"\ntheta0={theta_nominal_deg:.2f}"
-            ax2.text(1.15, med, note, fontsize=9, va="center")
-            ax2.legend(loc="best", fontsize=8)
+            yl_valid = np.isfinite(yl_theta_deg) & np.isfinite(yl_zeta_plot)
+            if np.any(yl_valid):
+                order = np.argsort(yl_theta_deg[yl_valid])
+                xyl = yl_theta_deg[yl_valid][order]
+                yyl = yl_zeta_plot[yl_valid][order]
+                ax2.plot(
+                    xyl,
+                    yyl,
+                    color="#d62828",
+                    lw=1.5,
+                    alpha=0.9,
+                    linestyle="--",
+                    label="Young-Laplace (wall)",
+                )
+            ax2.axhline(0.0, color="black", lw=0.8, alpha=0.35)
+            ax2.set_xlabel("theta (deg)")
+            ax2.set_ylabel(zeta_ylabel)
+            ax2.set_title("Triple-Point Comparison (OpenFOAM vs Young-Laplace)")
+            ax2.grid(True, alpha=0.25)
+            if np.any(of_valid) or np.any(yl_valid):
+                ax2.legend(loc="best", fontsize=8)
         else:
-            ax2.text(0.5, 0.5, "No computed contact-angle samples", ha="center", va="center")
-            ax2.set_xticks([])
+            if all_angles.size > 0:
+                bp = ax2.boxplot(
+                    all_angles,
+                    vert=True,
+                    patch_artist=True,
+                    showmeans=True,
+                    meanline=False,
+                    tick_labels=["all computed"],
+                )
+                for patch in bp["boxes"]:
+                    patch.set_facecolor("#8ecae6")
+                    patch.set_alpha(0.6)
 
-        ax2.set_ylabel("contact angle (deg)")
-        ax2.set_title("Contact Angle Distribution (all samples, tiered quality)")
-        ax2.grid(True, axis="y", alpha=0.25)
+                # Overlay tiered points with small horizontal jitter.
+                plot_rng = np.random.default_rng(0)
+                for tier_name in ("high", "medium", "low"):
+                    vals = np.asarray(
+                        [
+                            rows_sorted[j]["contact_angle_deg"]
+                            for j in range(len(rows_sorted))
+                            if rows_sorted[j]["quality_tier"] == tier_name
+                            and np.isfinite(rows_sorted[j]["contact_angle_deg"])
+                        ],
+                        dtype=float,
+                    )
+                    if vals.size > 0:
+                        xj = 1.0 + plot_rng.uniform(-0.06, 0.06, size=vals.size)
+                        ax2.scatter(xj, vals, s=14, alpha=0.75, color=color_by_tier[tier_name], label=f"{tier_name} ({vals.size})")
+
+                q1, med, q3 = np.percentile(all_angles, [25, 50, 75])
+                mean_v = np.mean(all_angles)
+                note = f"mean(all)={mean_v:.2f}\nQ1={q1:.2f}\nmedian={med:.2f}\nQ3={q3:.2f}\nN={all_angles.size}"
+                if theta_nominal_deg is not None:
+                    note += f"\ntheta0={theta_nominal_deg:.2f}"
+                ax2.text(1.15, med, note, fontsize=9, va="center")
+                ax2.legend(loc="best", fontsize=8)
+            else:
+                ax2.text(0.5, 0.5, "No computed contact-angle samples", ha="center", va="center")
+                ax2.set_xticks([])
+
+            ax2.set_ylabel("contact angle (deg)")
+            ax2.set_title("Contact Angle Distribution (all samples, tiered quality)")
+            ax2.grid(True, axis="y", alpha=0.25)
 
         fig.suptitle(f"Interface Snapshot Metrics at t={snapshot_time:.4g} s")
         fig.savefig(os.path.join(results_dir, "interface_contact_angle_snapshot_latest.png"), dpi=150)
@@ -2727,11 +2869,12 @@ def _extract_openfoam_interface_latest(case_dir, results_dir):
     _save_points_csv(csv_file, isosurface.points)
     return isosurface.points, t
 
-def _extract_analytical_interface(case_dir, results_dir):
+
+def _compute_young_laplace_interface_points(case_dir):
     import numpy as np
     from yl_nonlin import yl_nonlin
 
-    params = parse_case_params(os.path.basename(case_dir))
+    params = _load_case_params(case_dir)
     H = params.get("H", DEFAULTS["H"])
     R = params.get("D", DEFAULTS["D"]) / 2.0
 
@@ -2775,6 +2918,12 @@ def _extract_analytical_interface(case_dir, results_dir):
     if H:
         z_mean = float(np.mean(pts[:, 2]))
         pts[:, 2] += (0.5 * H - z_mean)
+
+    return pts, area, hL
+
+
+def _extract_analytical_interface(case_dir, results_dir):
+    pts, area, hL = _compute_young_laplace_interface_points(case_dir)
 
     csv_file = os.path.join(results_dir, "analytical_interface.csv")
     _save_points_csv(csv_file, pts)
