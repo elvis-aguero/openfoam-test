@@ -122,3 +122,14 @@ When running built cases, emit a CSV with timestamp, normU, maxDeltaAlpha, inter
 - 2026-02-17: `circularTiltingTank/adaptive_stop.py` convergence summary figure now uses larger label/tick/note/suptitle sizes.
 - 2026-02-17: `main.py` contact-angle snapshot figure now uses larger axis labels, ticks, titles, legends, annotation text, and suptitle.
 - 2026-02-17: Syntax validation passed after font-size updates (`python3 -m py_compile circularTiltingTank/adaptive_stop.py main.py`).
+- 2026-02-17: Implemented contact-angle figure overhaul in `main.py` per approved plan.
+- 2026-02-17: `extract_interface` now computes Young-Laplace contact-angle samples using the same estimator (`_estimate_contact_angles_on_boundary`) and passes them to snapshot rendering.
+- 2026-02-17: `_write_contact_angle_snapshot_outputs` signature extended with `yl_angle_rows`; plotting updated to phase-based coloring (`theta_deg` in [-180, 180]) with cyclic colormap and horizontal colorbar labeled `phase theta (deg)`.
+- 2026-02-17: Right subplot changed from single quality-tier-colored boxplot to side-by-side OpenFOAM and Young-Laplace boxplots; invalid estimates now shown as gray markers; per-source stats annotations added.
+- 2026-02-17: Left subplot wall-profile comparison preserved; capillary scaling behavior preserved.
+- 2026-02-17: Syntax validation passed (`python3 -m py_compile main.py`, `./sloshing/bin/python -m py_compile main.py`).
+- 2026-02-17: Slurm validation run submitted via pipeline (`run_postprocess_oscar`, job `399869`, COMPLETED) and regenerated `postProcessing/interface/interface_contact_angle_snapshot_latest.png` for `case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0002`.
+- 2026-02-17: User requested retroactive update of contact-angle snapshot plots for T0.0 cases after phase-color + dual-boxplot change.
+- 2026-02-17: Submitted Slurm extract postprocess for all T0.0 cases via main.py pipeline (jobs 399966-399974).
+- 2026-02-17: Snapshot PNG regeneration confirmed for 8/9 T0.0 cases; `case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0008` failed as expected (`*.foam contains no meshes`).
+- 2026-02-17: Several jobs reported SLURM FAILED due `/usr/bin/xvfb-run: ... kill ... No such process` despite successful `✅ Saved contact-angle diagnostics` and updated PNG timestamps.

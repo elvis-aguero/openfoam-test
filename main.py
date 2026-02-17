@@ -1952,8 +1952,15 @@ def extract_interface(case_dir, vtp_mode="none", quality_profile="balanced"):
             quality_profile=quality_profile,
         )
         yl_profile = None
+        yl_angle_rows = []
         try:
             yl_pts, _, _ = _compute_young_laplace_interface_points(case_dir)
+            yl_angle_rows, _ = _estimate_contact_angles_on_boundary(
+                yl_pts,
+                R_target,
+                n_samples=100,
+                quality_profile=quality_profile,
+            )
             theta_samples = [r.get("theta_rad") for r in angle_rows]
             yl_zeta = _sample_wall_profile_from_points(
                 yl_pts,
@@ -1967,6 +1974,7 @@ def extract_interface(case_dir, vtp_mode="none", quality_profile="balanced"):
                 }
         except Exception:
             yl_profile = None
+            yl_angle_rows = []
         snap_t = latest_interface_time if latest_interface_time is not None else latest_time
         _write_contact_angle_snapshot_outputs(
             results_dir,
@@ -1979,6 +1987,7 @@ def extract_interface(case_dir, vtp_mode="none", quality_profile="balanced"):
             capillary_time=t_cap,
             still_level=still_level,
             yl_profile=yl_profile,
+            yl_angle_rows=yl_angle_rows,
         )
         print("  ✅ Saved contact-angle diagnostics (CSV + quality report + snapshot figure).")
     else:
@@ -2518,6 +2527,7 @@ def _write_contact_angle_snapshot_outputs(
     capillary_time=None,
     still_level=None,
     yl_profile=None,
+    yl_angle_rows=None,
 ):
     import numpy as np
 
@@ -2784,9 +2794,15 @@ def _write_contact_angle_snapshot_outputs(
                 yl_theta_deg = None
                 yl_zeta_plot = None
 
-        tiers = [r["quality_tier"] for r in rows_sorted]
-        color_by_tier = {"high": "#2a9d8f", "medium": "#f4a261", "low": "#e76f51", "invalid": "#7f8c8d"}
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11.5, 4.8), constrained_layout=True)
+        import matplotlib.colors as mcolors
+        from matplotlib import cm
+        from matplotlib.lines import Line2D
+
+        phase_norm = mcolors.Normalize(vmin=-180.0, vmax=180.0)
+        phase_cmap = plt.get_cmap("twilight_shifted")
+        phase_mappable = cm.ScalarMappable(norm=phase_norm, cmap=phase_cmap)
+        phase_mappable.set_array([])
 
         # Left: triple-point/wall profile comparison, same orientation for both curves.
         of_valid = np.isfinite(theta_deg) & np.isfinite(zeta_plot)
@@ -2847,62 +2863,229 @@ def _write_contact_angle_snapshot_outputs(
         if np.any(of_valid) or yl_ok:
             ax1.legend(loc="best", fontsize=legend_fs)
 
-        # Right: keep contact-angle boxplot.
-        if all_angles.size > 0:
+        cbar = fig.colorbar(
+            phase_mappable,
+            ax=ax1,
+            orientation="horizontal",
+            pad=0.18,
+            fraction=0.08,
+        )
+        cbar.set_ticks([-180, -90, 0, 90, 180])
+        cbar.set_label("phase theta (deg)", fontsize=label_fs)
+        cbar.ax.tick_params(labelsize=tick_fs)
+
+        # Right: side-by-side contact-angle boxplots with phase-colored points.
+        yl_rows_sorted = []
+        if yl_angle_rows:
+            try:
+                yl_rows_sorted = sorted(yl_angle_rows, key=lambda r: r["theta_rad"])
+            except Exception:
+                yl_rows_sorted = []
+
+        def _split_phase_angle(rows_in):
+            if not rows_in:
+                return (
+                    np.asarray([], dtype=float),
+                    np.asarray([], dtype=float),
+                    np.asarray([], dtype=float),
+                    0,
+                )
+            theta_vals = np.asarray([r.get("theta_deg", float("nan")) for r in rows_in], dtype=float)
+            angle_vals = np.asarray([r.get("contact_angle_deg", float("nan")) for r in rows_in], dtype=float)
+            finite_mask = np.isfinite(theta_vals) & np.isfinite(angle_vals)
+            invalid_count = int(np.size(angle_vals) - np.count_nonzero(finite_mask))
+            return (
+                theta_vals[finite_mask],
+                angle_vals[finite_mask],
+                theta_vals,
+                invalid_count,
+            )
+
+        of_phase, of_angles, _, of_invalid_count = _split_phase_angle(rows_sorted)
+        yl_phase, yl_angles, _, yl_invalid_count = _split_phase_angle(yl_rows_sorted)
+        has_yl_rows = len(yl_rows_sorted) > 0
+
+        box_data = []
+        box_positions = []
+        box_colors = []
+        if of_angles.size > 0:
+            box_data.append(of_angles)
+            box_positions.append(1.0)
+            box_colors.append("#8ecae6")
+        if yl_angles.size > 0:
+            box_data.append(yl_angles)
+            box_positions.append(2.0)
+            box_colors.append("#ffb4a2")
+
+        if box_data:
             bp = ax2.boxplot(
-                all_angles,
+                box_data,
+                positions=box_positions,
+                widths=0.5,
                 vert=True,
                 patch_artist=True,
                 showmeans=True,
                 meanline=False,
-                tick_labels=["all computed"],
             )
-            for patch in bp["boxes"]:
-                patch.set_facecolor("#8ecae6")
-                patch.set_alpha(0.6)
+            for patch, color in zip(bp["boxes"], box_colors):
+                patch.set_facecolor(color)
+                patch.set_alpha(0.55)
 
-            plot_rng = np.random.default_rng(0)
-            for tier_name in ("high", "medium", "low"):
-                vals = np.asarray(
-                    [
-                        rows_sorted[j]["contact_angle_deg"]
-                        for j in range(len(rows_sorted))
-                        if rows_sorted[j]["quality_tier"] == tier_name
-                        and np.isfinite(rows_sorted[j]["contact_angle_deg"])
-                    ],
-                    dtype=float,
-                )
-                if vals.size > 0:
-                    xj = 1.0 + plot_rng.uniform(-0.06, 0.06, size=vals.size)
-                    ax2.scatter(
-                        xj,
-                        vals,
-                        s=14,
-                        alpha=0.75,
-                        color=color_by_tier[tier_name],
-                        label=f"{tier_name} ({vals.size})",
-                    )
+        ax2.set_xticks([1.0, 2.0])
+        ax2.set_xticklabels(["OpenFOAM", "Young-Laplace"])
+        ax2.set_xlim(0.5, 2.5)
 
-            q1, med, q3 = np.percentile(all_angles, [25, 50, 75])
-            mean_v = np.mean(all_angles)
-            note = f"mean(all)={mean_v:.2f}\nQ1={q1:.2f}\nmedian={med:.2f}\nQ3={q3:.2f}\nN={all_angles.size}"
-            if theta_nominal_deg is not None:
-                note += f"\ntheta0={theta_nominal_deg:.2f}"
-            ax2.text(1.15, med, note, fontsize=note_fs, va="center")
-            ax2.legend(loc="best", fontsize=legend_fs)
+        rng = np.random.default_rng(0)
+        if of_angles.size > 0:
+            xj = 1.0 + rng.uniform(-0.08, 0.08, size=of_angles.size)
+            ax2.scatter(
+                xj,
+                of_angles,
+                s=18,
+                c=of_phase,
+                cmap=phase_cmap,
+                norm=phase_norm,
+                alpha=0.85,
+                edgecolors="none",
+                zorder=3,
+            )
+        if yl_angles.size > 0:
+            xj = 2.0 + rng.uniform(-0.08, 0.08, size=yl_angles.size)
+            ax2.scatter(
+                xj,
+                yl_angles,
+                s=18,
+                c=yl_phase,
+                cmap=phase_cmap,
+                norm=phase_norm,
+                alpha=0.85,
+                edgecolors="none",
+                zorder=3,
+            )
+
+        finite_groups = []
+        if of_angles.size > 0:
+            finite_groups.append(of_angles)
+        if yl_angles.size > 0:
+            finite_groups.append(yl_angles)
+
+        if finite_groups:
+            y_all = np.concatenate(finite_groups)
+            y_min = float(np.min(y_all))
+            y_max = float(np.max(y_all))
+            y_span = max(y_max - y_min, 5.0)
+            y_invalid = y_min - 0.08 * y_span
         else:
-            ax2.text(
-                0.5,
-                0.5,
-                "No computed contact-angle samples",
-                ha="center",
-                va="center",
-                fontsize=note_fs,
+            y_min = 0.0
+            y_max = 1.0
+            y_span = 1.0
+            y_invalid = -0.3
+
+        invalid_handles = []
+        if of_invalid_count > 0:
+            xj = 1.0 + rng.uniform(-0.08, 0.08, size=of_invalid_count)
+            ax2.scatter(
+                xj,
+                np.full(of_invalid_count, y_invalid, dtype=float),
+                s=18,
+                color="#8a8a8a",
+                alpha=0.8,
+                zorder=3,
             )
-            ax2.set_xticks([])
+            invalid_handles.append(
+                Line2D(
+                    [0],
+                    [0],
+                    marker="o",
+                    color="none",
+                    markerfacecolor="#8a8a8a",
+                    markeredgecolor="#8a8a8a",
+                    markersize=6,
+                    label=f"OpenFOAM invalid ({of_invalid_count})",
+                )
+            )
+        if has_yl_rows and yl_invalid_count > 0:
+            xj = 2.0 + rng.uniform(-0.08, 0.08, size=yl_invalid_count)
+            ax2.scatter(
+                xj,
+                np.full(yl_invalid_count, y_invalid, dtype=float),
+                s=18,
+                color="#8a8a8a",
+                alpha=0.8,
+                zorder=3,
+            )
+            invalid_handles.append(
+                Line2D(
+                    [0],
+                    [0],
+                    marker="o",
+                    color="none",
+                    markerfacecolor="#8a8a8a",
+                    markeredgecolor="#8a8a8a",
+                    markersize=6,
+                    label=f"Young-Laplace invalid ({yl_invalid_count})",
+                )
+            )
+
+        if finite_groups:
+            ax2.set_ylim(y_min - 0.2 * y_span, y_max + 0.2 * y_span)
+        elif (of_invalid_count + yl_invalid_count) > 0:
+            ax2.set_ylim(y_invalid - 0.6, y_invalid + 0.6)
+
+        if invalid_handles:
+            ax2.legend(handles=invalid_handles, loc="best", fontsize=legend_fs)
+
+        def _box_note(vals, source_label, add_theta0=False):
+            if vals.size == 0:
+                return f"{source_label}\nN=0"
+            q1, med, q3 = np.percentile(vals, [25, 50, 75])
+            mean_v = float(np.mean(vals))
+            note = (
+                f"{source_label}\nmean={mean_v:.2f}\nQ1={q1:.2f}\n"
+                f"median={med:.2f}\nQ3={q3:.2f}\nN={vals.size}"
+            )
+            if add_theta0 and theta_nominal_deg is not None:
+                note += f"\ntheta0={theta_nominal_deg:.2f}"
+            return note
+
+        if of_angles.size > 0:
+            y_of = float(np.median(of_angles))
+        else:
+            y_of = y_invalid
+        if yl_angles.size > 0:
+            y_yl = float(np.median(yl_angles))
+        else:
+            y_yl = y_invalid
+
+        ax2.text(
+            1.22,
+            y_of,
+            _box_note(of_angles, "OpenFOAM", add_theta0=True),
+            fontsize=note_fs,
+            va="center",
+        )
+        ax2.text(
+            2.22,
+            y_yl,
+            _box_note(yl_angles, "Young-Laplace", add_theta0=False),
+            fontsize=note_fs,
+            va="center",
+        )
+
+        if not has_yl_rows:
+            ax2.text(
+                0.98,
+                0.95,
+                "Young-Laplace contact-angle samples unavailable",
+                transform=ax2.transAxes,
+                ha="right",
+                va="top",
+                fontsize=note_fs,
+                alpha=0.75,
+            )
 
         ax2.set_ylabel("contact angle (deg)", fontsize=label_fs)
-        ax2.set_title("Contact Angle Distribution (all samples, tiered quality)", fontsize=title_fs)
+        ax2.set_title("Contact Angle Distribution (OpenFOAM vs Young-Laplace)", fontsize=title_fs)
         ax2.tick_params(axis="both", labelsize=tick_fs)
         ax2.grid(True, axis="y", alpha=0.25)
 
