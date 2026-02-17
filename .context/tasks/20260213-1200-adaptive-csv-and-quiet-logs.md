@@ -133,3 +133,11 @@ When running built cases, emit a CSV with timestamp, normU, maxDeltaAlpha, inter
 - 2026-02-17: Submitted Slurm extract postprocess for all T0.0 cases via main.py pipeline (jobs 399966-399974).
 - 2026-02-17: Snapshot PNG regeneration confirmed for 8/9 T0.0 cases; `case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0008` failed as expected (`*.foam contains no meshes`).
 - 2026-02-17: Several jobs reported SLURM FAILED due `/usr/bin/xvfb-run: ... kill ... No such process` despite successful `✅ Saved contact-angle diagnostics` and updated PNG timestamps.
+- 2026-02-17: Refined contact-angle snapshot figure per user feedback: moved phase colorbar to minimal inline horizontal bar inside left panel, just above x-axis; removed colorbar label text.
+- 2026-02-17: Updated Young-Laplace contact-angle estimation to apples-to-apples sampling with OpenFOAM by interpolating Young-Laplace interface onto OpenFOAM XY sample grid before running `_estimate_contact_angles_on_boundary`.
+- 2026-02-17: Added helper `_project_interface_to_reference_xy(source_points, reference_points)` using SciPy interpolation (`linear` + `nearest` fallback) with KD-tree fallback.
+- 2026-02-17: Slurm validation run for updated figure path succeeded (`run_postprocess_oscar` extract job `399999`, COMPLETED) and regenerated snapshot PNG for `case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0002`.
+- 2026-02-17: User requested additional retroactive update for all T0.0 cases plus non-H0.0083 T10.0 case with existing snapshot PNG.
+- 2026-02-17: Submitted Slurm extract jobs 400017-400026 for 10 targets (9x T0.0 + `case_H0.0082_D0.0083_flat_tilt_T10.0_m0.0002`).
+- 2026-02-17: Verified regenerated snapshot PNG timestamps for 9/10 targets (all except `case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0008`, which remains missing due no mesh in `.foam`).
+- 2026-02-17: Some jobs marked FAILED in Slurm due post-run `xvfb-run` cleanup behavior, but corresponding logs indicate successful extract completion and PNG regeneration for cases with updated timestamps.

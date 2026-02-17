@@ -58,3 +58,7 @@ case_*/processor*/
 **/slurm/*.out
 **/slurm/*.err
 .aider*
+
+# Keep full logs out of git
+**/*.full
+

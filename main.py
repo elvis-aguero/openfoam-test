@@ -1955,8 +1955,10 @@ def extract_interface(case_dir, vtp_mode="none", quality_profile="balanced"):
         yl_angle_rows = []
         try:
             yl_pts, _, _ = _compute_young_laplace_interface_points(case_dir)
+            yl_pts_on_of_grid = _project_interface_to_reference_xy(yl_pts, latest_interface_pts)
+            yl_for_angles = yl_pts_on_of_grid if yl_pts_on_of_grid is not None else yl_pts
             yl_angle_rows, _ = _estimate_contact_angles_on_boundary(
-                yl_pts,
+                yl_for_angles,
                 R_target,
                 n_samples=100,
                 quality_profile=quality_profile,
@@ -2248,6 +2250,57 @@ def _sample_wall_profile_from_points(
         idx = np.argpartition(d, k - 1)[:k]
         out[i] = float(np.mean(zw[idx]))
     return out
+
+
+def _project_interface_to_reference_xy(source_points, reference_points):
+    """
+    Interpolate source interface z(x,y) onto the exact XY coordinates from reference_points.
+    Returns Nx3 points [x, y, z_interp], enabling apples-to-apples sampling geometry.
+    """
+    import numpy as np
+
+    if source_points is None or reference_points is None:
+        return None
+    src = np.asarray(source_points, dtype=float)
+    ref = np.asarray(reference_points, dtype=float)
+    if src.ndim != 2 or ref.ndim != 2 or src.shape[1] < 3 or ref.shape[1] < 3:
+        return None
+    if src.shape[0] == 0 or ref.shape[0] == 0:
+        return None
+
+    xy_src = src[:, :2]
+    z_src = src[:, 2]
+    xy_ref = ref[:, :2]
+
+    z_interp = None
+    try:
+        from scipy.interpolate import griddata
+
+        z_interp = griddata(xy_src, z_src, xy_ref, method="linear")
+        if z_interp is None:
+            return None
+        if np.any(~np.isfinite(z_interp)):
+            z_near = griddata(xy_src, z_src, xy_ref, method="nearest")
+            if z_near is not None:
+                z_interp = np.where(np.isfinite(z_interp), z_interp, z_near)
+    except Exception:
+        try:
+            from scipy.spatial import cKDTree
+
+            tree = cKDTree(xy_src)
+            _, idx = tree.query(xy_ref, k=1)
+            z_interp = z_src[idx]
+        except Exception:
+            return None
+
+    if z_interp is None:
+        return None
+    finite = np.isfinite(z_interp)
+    if not np.any(finite):
+        return None
+    xy_use = xy_ref[finite]
+    z_use = z_interp[finite]
+    return np.column_stack((xy_use[:, 0], xy_use[:, 1], z_use))
 
 
 def _estimate_contact_angles_on_boundary(
@@ -2863,16 +2916,15 @@ def _write_contact_angle_snapshot_outputs(
         if np.any(of_valid) or yl_ok:
             ax1.legend(loc="best", fontsize=legend_fs)
 
+        # Minimal inline colorbar, aligned with left-panel x-axis and unlabeled.
+        cax = ax1.inset_axes([0.08, 0.03, 0.84, 0.03])
         cbar = fig.colorbar(
             phase_mappable,
-            ax=ax1,
+            cax=cax,
             orientation="horizontal",
-            pad=0.18,
-            fraction=0.08,
         )
-        cbar.set_ticks([-180, -90, 0, 90, 180])
-        cbar.set_label("phase theta (deg)", fontsize=label_fs)
-        cbar.ax.tick_params(labelsize=tick_fs)
+        cbar.set_ticks([-180, 0, 180])
+        cbar.ax.tick_params(labelsize=max(8, tick_fs - 2), length=2, pad=1)
 
         # Right: side-by-side contact-angle boxplots with phase-colored points.
         yl_rows_sorted = []
