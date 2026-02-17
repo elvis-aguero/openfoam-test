@@ -27,7 +27,7 @@ fi
 # -----------------------------------
 
 echo '------------------------------------------------------------'
-echo 'Action: compare | Case: case_H0.0083_D0.0083_flat_tilt_T0.0_m5e-05'
+echo 'Action: compare | Case: case_H0.0083_D0.0083_flat_tilt_T0.0_m5e-05 | vtp_mode: none | quality_profile: balanced'
 echo 'Date: $(date)'
 echo 'Python: $(which python)'
 export SLOSHING_OFFSCREEN=1

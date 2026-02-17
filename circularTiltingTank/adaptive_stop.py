@@ -271,7 +271,87 @@ def _to_float_or_nan(value):
         return float("nan")
 
 
-def _write_convergence_summary_figure(csv_path, fig_path):
+def _read_scalar_value(path, key, default=None):
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as handle:
+            content = handle.read()
+    except Exception:
+        return default
+    match = re.search(rf"^\s*{re.escape(key)}\s+([-+0-9.eE]+);", content, re.M)
+    if not match:
+        return default
+    try:
+        return float(match.group(1))
+    except Exception:
+        return default
+
+
+def _read_g_magnitude(path):
+    if not os.path.exists(path):
+        return 9.81
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as handle:
+            content = handle.read()
+    except Exception:
+        return 9.81
+    match = re.search(r"^\s*value\s+\(([^)]+)\);", content, re.M)
+    if not match:
+        return 9.81
+    parts = match.group(1).split()
+    if len(parts) != 3:
+        return 9.81
+    try:
+        gx = float(parts[0])
+        gy = float(parts[1])
+        gz = float(parts[2])
+        gmag = math.sqrt(gx * gx + gy * gy + gz * gz)
+        if gmag > 0.0:
+            return gmag
+    except Exception:
+        pass
+    return 9.81
+
+
+def _infer_case_dir_from_csv(csv_path):
+    abs_csv = os.path.abspath(csv_path)
+    adaptive_dir = os.path.dirname(abs_csv)
+    post_dir = os.path.dirname(adaptive_dir)
+    case_dir = os.path.dirname(post_dir)
+    if os.path.basename(adaptive_dir) == "adaptive_stop" and os.path.basename(post_dir) == "postProcessing":
+        return case_dir
+    return os.getcwd()
+
+
+def _read_capillary_scales(case_dir):
+    rho = _read_scalar_value(
+        os.path.join(case_dir, "constant", "physicalProperties.water"),
+        "rho",
+        1000.0,
+    )
+    sigma = _read_scalar_value(
+        os.path.join(case_dir, "constant", "phaseProperties"),
+        "sigma",
+        0.072,
+    )
+    gmag = _read_g_magnitude(os.path.join(case_dir, "constant", "g"))
+    try:
+        rho = float(rho)
+        sigma = float(sigma)
+        gmag = float(gmag)
+    except Exception:
+        return None, None
+    if rho <= 0.0 or sigma <= 0.0 or gmag <= 0.0:
+        return None, None
+    lc = math.sqrt(sigma / (rho * gmag))
+    tc = math.sqrt(rho * (lc ** 3) / sigma)
+    if not (math.isfinite(lc) and lc > 0.0 and math.isfinite(tc) and tc > 0.0):
+        return None, None
+    return lc, tc
+
+
+def _write_convergence_summary_figure(csv_path, fig_path, case_dir=None):
     """
     Create a convergence summary figure with one subplot per metric column.
     Returns True on success, False otherwise.
@@ -295,11 +375,17 @@ def _write_convergence_summary_figure(csv_path, fig_path):
     if not metric_keys:
         return False
 
+    if case_dir is None:
+        case_dir = _infer_case_dir_from_csv(csv_path)
+    lc, tc = _read_capillary_scales(case_dir)
+
     x_values = []
     for i, row in enumerate(rows):
         x_val = _to_float_or_nan(row.get(x_key))
         if not math.isfinite(x_val):
             x_val = float(i)
+        elif x_key == "timestamp" and tc is not None and tc > 0.0:
+            x_val = x_val / tc
         x_values.append(x_val)
 
     # Matplotlib is optional; plotting should never break adaptive stopping.
@@ -323,9 +409,28 @@ def _write_convergence_summary_figure(csv_path, fig_path):
     )
     axes_flat = [ax for row_axes in axes for ax in row_axes]
 
+    log_y_keys = {"normU", "maxDeltaAlpha"}
+    x_axis_label = x_key
+    if x_key == "timestamp" and tc is not None and tc > 0.0:
+        x_axis_label = "timestamp / t_cap"
+
     for i, key in enumerate(metric_keys):
         ax = axes_flat[i]
-        y_values = [_to_float_or_nan(row.get(key)) for row in rows]
+        y_label = key
+        y_scale = 1.0
+        if key in ("interfaceHeightMaxRel", "interfaceHeightMinRel") and lc is not None and lc > 0.0:
+            y_scale = 1.0 / lc
+            y_label = f"{key} / l_cap"
+        elif key == "normU" and lc is not None and lc > 0.0 and tc is not None and tc > 0.0:
+            y_scale = tc / lc
+            y_label = "normU * t_cap / l_cap"
+
+        y_values = []
+        for row in rows:
+            y = _to_float_or_nan(row.get(key))
+            if math.isfinite(y):
+                y *= y_scale
+            y_values.append(y)
         xs = []
         ys = []
         for x, y in zip(x_values, y_values):
@@ -333,13 +438,39 @@ def _write_convergence_summary_figure(csv_path, fig_path):
                 xs.append(x)
                 ys.append(y)
 
-        if xs:
-            ax.plot(xs, ys, "-", linewidth=1.5, color="#1f77b4")
-            ax.scatter(xs, ys, s=8, color="#1f77b4", alpha=0.6)
+        if key in log_y_keys:
+            xs_plot = []
+            ys_plot = []
+            for x, y in zip(xs, ys):
+                if y > 0.0:
+                    xs_plot.append(x)
+                    ys_plot.append(y)
+            if xs_plot:
+                ax.plot(xs_plot, ys_plot, "-", linewidth=1.5, color="#1f77b4")
+                ax.set_yscale("log")
+            else:
+                ax.text(
+                    0.5,
+                    0.5,
+                    "No positive finite data",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                )
         else:
-            ax.text(0.5, 0.5, "No finite data", ha="center", va="center", transform=ax.transAxes)
+            if xs:
+                ax.plot(xs, ys, "-", linewidth=1.5, color="#1f77b4")
+            else:
+                ax.text(
+                    0.5,
+                    0.5,
+                    "No finite data",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                )
 
-        ax.set_ylabel(key)
+        ax.set_ylabel(y_label)
         ax.grid(True, alpha=0.25)
 
     for j in range(n_metrics, len(axes_flat)):
@@ -347,7 +478,7 @@ def _write_convergence_summary_figure(csv_path, fig_path):
 
     for ax in axes[-1]:
         if ax.get_visible():
-            ax.set_xlabel(x_key)
+            ax.set_xlabel(x_axis_label)
 
     fig.suptitle("Adaptive Stop Convergence Summary")
     out_dir = os.path.dirname(fig_path)

@@ -1,0 +1,13 @@
+metric,value
+openfoam_time,10.0
+openfoam_time_capillary,601.4825369116212
+capillary_length,0.002711583370128251
+capillary_time,0.01662558659033745
+undisturbed_interface_area,5.4106079476450215e-05
+analytical_area,5.518820106597922e-05
+analytical_hL,0.0
+l2_rms,2.153072940858567e-07
+l2_rms_over_undisturbed_area,0.003979354929598432
+l2_rms_capillary,7.9402793385502e-05
+l2_sum,2.7333004462883694e-05
+num_samples,16116

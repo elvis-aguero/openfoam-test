@@ -1924,6 +1924,8 @@ def extract_interface(case_dir, vtp_mode="none", quality_profile="balanced"):
     if latest_interface_pts is not None and len(latest_interface_pts) > 0:
         still_level = None
         diameter = None
+        l_cap = None
+        t_cap = None
         try:
             params = _load_case_params(case_dir)
             theta_nominal = params.get("contact_angle", None)
@@ -1941,6 +1943,7 @@ def extract_interface(case_dir, vtp_mode="none", quality_profile="balanced"):
             theta_nominal = None
         if diameter is None and R_target is not None:
             diameter = 2.0 * float(R_target)
+        l_cap, t_cap = _read_capillary_scales(case_dir)
 
         angle_rows, angle_meta = _estimate_contact_angles_on_boundary(
             latest_interface_pts,
@@ -1972,6 +1975,8 @@ def extract_interface(case_dir, vtp_mode="none", quality_profile="balanced"):
             theta_nominal_deg=theta_nominal,
             thresholds=angle_meta,
             diameter=diameter,
+            capillary_length=l_cap,
+            capillary_time=t_cap,
             still_level=still_level,
             yl_profile=yl_profile,
         )
@@ -2010,6 +2015,36 @@ def _read_g_vector(path):
         return (float(parts[0]), float(parts[1]), float(parts[2]))
     except ValueError:
         return (0.0, 0.0, -9.81)
+
+
+def _read_capillary_scales(case_dir):
+    rho = _read_scalar_value(
+        os.path.join(case_dir, "constant", "physicalProperties.water"),
+        "rho",
+        1000.0,
+    )
+    sigma = _read_scalar_value(
+        os.path.join(case_dir, "constant", "phaseProperties"),
+        "sigma",
+        0.072,
+    )
+    gx, gy, gz = _read_g_vector(os.path.join(case_dir, "constant", "g"))
+    g_mag = math.sqrt(gx * gx + gy * gy + gz * gz)
+    if g_mag <= 0.0:
+        g_mag = 9.81
+    try:
+        rho = float(rho)
+        sigma = float(sigma)
+    except Exception:
+        return None, None
+    if rho <= 0.0 or sigma <= 0.0 or g_mag <= 0.0:
+        return None, None
+    l_cap = math.sqrt(sigma / (rho * g_mag))
+    t_cap = math.sqrt(rho * (l_cap ** 3) / sigma)
+    if not (math.isfinite(l_cap) and l_cap > 0.0 and math.isfinite(t_cap) and t_cap > 0.0):
+        return None, None
+    return float(l_cap), float(t_cap)
+
 
 def _read_contact_angle(path):
     return _read_scalar_value(path, "theta0", 90.0)
@@ -2479,6 +2514,8 @@ def _write_contact_angle_snapshot_outputs(
     theta_nominal_deg=None,
     thresholds=None,
     diameter=None,
+    capillary_length=None,
+    capillary_time=None,
     still_level=None,
     yl_profile=None,
 ):
@@ -2701,20 +2738,23 @@ def _write_contact_angle_snapshot_outputs(
         zeta = np.asarray([r["zeta_wall"] for r in rows_sorted], dtype=float)
         zeta_plot = zeta.copy()
         zeta_ylabel = "interface height zeta at wall (m)"
-        if diameter is not None:
+        length_scale = None
+        if capillary_length is not None:
             try:
-                dval = float(diameter)
+                lval = float(capillary_length)
             except Exception:
-                dval = 0.0
-            if dval > 0.0:
+                lval = 0.0
+            if lval > 0.0:
+                length_scale = lval
+                zeta_ylabel = "(zeta_wall - z_still) / l_cap"
+        if length_scale is not None:
+            zref = 0.0
+            try:
+                if still_level is not None and np.isfinite(float(still_level)):
+                    zref = float(still_level)
+            except Exception:
                 zref = 0.0
-                try:
-                    if still_level is not None and np.isfinite(float(still_level)):
-                        zref = float(still_level)
-                except Exception:
-                    zref = 0.0
-                zeta_plot = (zeta - zref) / dval
-                zeta_ylabel = "(zeta_wall - z_still) / D"
+            zeta_plot = (zeta - zref) / length_scale
 
         yl_theta_deg = None
         yl_zeta_plot = None
@@ -2725,19 +2765,14 @@ def _write_contact_angle_snapshot_outputs(
                 if yl_theta_rad.size > 0 and yl_theta_rad.size == yl_zeta_wall.size:
                     yl_theta_deg = np.degrees(yl_theta_rad)
                     yl_zeta_plot = yl_zeta_wall.copy()
-                    if diameter is not None:
+                    if length_scale is not None:
+                        zref = 0.0
                         try:
-                            dval = float(diameter)
+                            if still_level is not None and np.isfinite(float(still_level)):
+                                zref = float(still_level)
                         except Exception:
-                            dval = 0.0
-                        if dval > 0.0:
                             zref = 0.0
-                            try:
-                                if still_level is not None and np.isfinite(float(still_level)):
-                                    zref = float(still_level)
-                            except Exception:
-                                zref = 0.0
-                            yl_zeta_plot = (yl_zeta_wall - zref) / dval
+                        yl_zeta_plot = (yl_zeta_wall - zref) / length_scale
             except Exception:
                 yl_theta_deg = None
                 yl_zeta_plot = None
@@ -2855,7 +2890,19 @@ def _write_contact_angle_snapshot_outputs(
         ax2.set_title("Contact Angle Distribution (all samples, tiered quality)")
         ax2.grid(True, axis="y", alpha=0.25)
 
-        fig.suptitle(f"Interface Snapshot Metrics at t={snapshot_time:.4g} s")
+        if capillary_time is not None:
+            try:
+                tcap = float(capillary_time)
+            except Exception:
+                tcap = 0.0
+        else:
+            tcap = 0.0
+        if tcap > 0.0:
+            fig.suptitle(
+                f"Interface Snapshot Metrics at t={snapshot_time:.4g} s (t/t_cap={snapshot_time / tcap:.4g})"
+            )
+        else:
+            fig.suptitle(f"Interface Snapshot Metrics at t={snapshot_time:.4g} s")
         fig.savefig(os.path.join(results_dir, "interface_contact_angle_snapshot_latest.png"), dpi=150)
         plt.close(fig)
     except Exception:
@@ -3027,22 +3074,23 @@ def compare_interfaces(case_dir):
     except Exception:
         undisturbed_area = ""
 
+    l_cap, t_cap = _read_capillary_scales(case_dir)
+    openfoam_time_cap = ""
+
     if l2_info and l2_info.get("l2_rms") is not None:
-        rho = _read_scalar_value(os.path.join(case_dir, "constant", "physicalProperties.water"), "rho", 1000.0)
-        sigma = _read_scalar_value(os.path.join(case_dir, "constant", "phaseProperties"), "sigma", 0.072)
-        gx, gy, gz = _read_g_vector(os.path.join(case_dir, "constant", "g"))
-        g_vertical = abs(gz) if abs(gz) > 1e-12 else math.sqrt(gx * gx + gy * gy + gz * gz)
-        if g_vertical <= 0:
-            g_vertical = 9.81
-        lc = math.sqrt(sigma / (rho * g_vertical)) if rho > 0 else 0.0
-        if lc > 0:
-            l2_rms_cap = l2_info["l2_rms"] / lc
+        if l_cap is not None and l_cap > 0.0:
+            l2_rms_cap = l2_info["l2_rms"] / l_cap
         if undisturbed_area not in ("", 0):
             l2_rms_over_undisturbed_area = l2_info["l2_rms"] / undisturbed_area
+    if t is not None and t_cap is not None and t_cap > 0.0:
+        openfoam_time_cap = float(t) / t_cap
 
     summary = [
         "metric,value",
         f"openfoam_time,{t if t is not None else ''}",
+        f"openfoam_time_capillary,{openfoam_time_cap}",
+        f"capillary_length,{l_cap if l_cap is not None else ''}",
+        f"capillary_time,{t_cap if t_cap is not None else ''}",
         f"undisturbed_interface_area,{undisturbed_area}",
         f"analytical_area,{area}",
         f"analytical_hL,{hL}",
