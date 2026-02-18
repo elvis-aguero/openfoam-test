@@ -3,7 +3,7 @@ set -euo pipefail
 shopt -s nullglob globstar
 
 # Target safely below GitHub's 100MB blob limit
-MAX_BYTES="${MAX_BYTES:-95000000}"
+MAX_BYTES="${MAX_BYTES:-65000000}"
 
 # Keep 20% from start + 20% from end (by lines)
 KEEP_FRACTION="${KEEP_FRACTION:-0.20}"
