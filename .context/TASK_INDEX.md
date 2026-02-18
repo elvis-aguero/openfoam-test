@@ -13,5 +13,5 @@
 
 | 20260211-1100-codex-install-update | Determine Codex install location and update steps on Oscar | done | local | main | 2026-02-11 |
 | 20260212-1505-theta-build-enforcement | Verify non-90 theta0 in dry build and enforce in build logic | done | local | main | 2026-02-12 |
-| 20260213-1200-adaptive-csv-and-quiet-logs | Add adaptive CSV metrics and reduce .out verbosity | open | local | main | 2026-02-16 |
+| 20260213-1200-adaptive-csv-and-quiet-logs | Add adaptive CSV metrics and reduce .out verbosity | open | local | main | 2026-02-17 |
 | 20260213-1400-t0-theta115-oscillation-diagnosis | Diagnose non-steady oscillations in T0.0 theta0=115 run | open | local | main | 2026-02-13 |

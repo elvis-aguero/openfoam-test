@@ -135,6 +135,7 @@ DEFAULTS = {
     "H": 0.0083,
     "D": 0.0083,
     "mesh": 0.0005,
+    "near_wall_refine_level": 0,
     "mesher": "snappy",
     "geo": "flat",
     "tilt_deg": 5.0,
@@ -578,6 +579,7 @@ def _preflight_mesh_quality(params):
                     str(params["mesh"]),
                     params["geo"],
                     params.get("mesher", "gmsh"),
+                    str(params.get("near_wall_refine_level", DEFAULTS["near_wall_refine_level"])),
                 ],
                 cwd=tmpdir,
                 check=True,
@@ -614,9 +616,14 @@ def _start_mesh_preflight_async(params):
 
 def get_case_name(params):
     """Generates a unique case folder name from parameters."""
+    try:
+        near_wall_refine_level = int(float(params.get("near_wall_refine_level", DEFAULTS["near_wall_refine_level"])))
+    except (TypeError, ValueError):
+        near_wall_refine_level = int(DEFAULTS["near_wall_refine_level"])
+    near_wall_refine_level = max(0, near_wall_refine_level)
     return (
         f"case_H{params['H']}_D{params['D']}_{params['geo']}_tilt_"
-        f"T{params['tilt_deg']}_m{params['mesh']}"
+        f"T{params['tilt_deg']}_m{params['mesh']}_R{near_wall_refine_level}"
     )
 
 def _list_time_folders(path):
@@ -686,10 +693,10 @@ def has_case_progress(case_dir):
 
 def parse_case_params(case_name):
     """Extracts parameters from a case folder name."""
-    # Format: case_H{H}_D{D}_{geo}_tilt_T{tilt}[_d{duration}]_m{mesh}
+    # Format: case_H{H}_D{D}_{geo}_tilt_T{tilt}[_d{duration}]_m{mesh}[_R{near_wall_refine_level}]
     # We now skip duration in the name, but support parsing it for backward compatibility.
     match = re.match(
-        r'case_H([\d.]+)_D([\d.]+)_(\w+)_tilt_T([\d.]+)(?:_d([\d.]+))?_m([\d.]+)',
+        r'case_H([\d.]+)_D([\d.]+)_(\w+)_tilt_T([\d.]+)(?:_d([\d.]+))?_m([\d.]+)(?:_R(\d+))?',
         case_name
     )
     if not match:
@@ -698,6 +705,8 @@ def parse_case_params(case_name):
     # If duration group (5) is None, use default.
     duration = float(match.group(5)) if match.group(5) else DEFAULTS["duration"]
 
+    near_wall_refine_level = int(match.group(7)) if match.group(7) else DEFAULTS["near_wall_refine_level"]
+
     return {
         "H": float(match.group(1)),
         "D": float(match.group(2)),
@@ -705,6 +714,7 @@ def parse_case_params(case_name):
         "tilt_deg": float(match.group(4)),
         "duration": duration,
         "mesh": float(match.group(6)),
+        "near_wall_refine_level": near_wall_refine_level,
         "dt": DEFAULTS["dt"],
         "mesher": DEFAULTS["mesher"],
     }
@@ -1001,6 +1011,18 @@ def setup_case(params):
     _patch_fvsolution_for_stability(case_name)
 
     cwd = os.path.join(os.getcwd(), case_name)
+    mesher = str(params.get("mesher", DEFAULTS["mesher"])).strip().lower()
+    if mesher not in MESHER_OPTIONS:
+        mesher = DEFAULTS["mesher"]
+    try:
+        near_wall_refine_level = int(float(params.get("near_wall_refine_level", DEFAULTS["near_wall_refine_level"])))
+    except (TypeError, ValueError):
+        near_wall_refine_level = int(DEFAULTS["near_wall_refine_level"])
+    near_wall_refine_level = max(0, near_wall_refine_level)
+    params["mesher"] = mesher
+    params["near_wall_refine_level"] = near_wall_refine_level
+    if mesher != "snappy" and near_wall_refine_level != 0:
+        print("  ⚠️  near_wall_refine_level is only used with snappy meshing; ignored for gmsh.")
     
     # Static tilt (rotated gravity + zero motion)
     subprocess.run([
@@ -1015,19 +1037,24 @@ def setup_case(params):
     # Mesh Geometry
     subprocess.run([
         sys.executable, "generate_mesh.py", 
-        str(params['H']), str(params['D']), str(params['mesh']), params['geo'], params.get("mesher", "gmsh")
+        str(params['H']),
+        str(params['D']),
+        str(params['mesh']),
+        params['geo'],
+        mesher,
+        str(near_wall_refine_level),
     ], cwd=cwd, check=True, capture_output=True)
 
-    _write_mesh_tool(case_name, params.get("mesher", "gmsh"))
+    _write_mesh_tool(case_name, mesher)
     
     # Run Gmsh
     gmsh_path = shutil.which("gmsh")
-    if gmsh_path and params.get("mesher", "gmsh") == "gmsh":
+    if gmsh_path and mesher == "gmsh":
         subprocess.run([
             "gmsh", "-3", "cylinder.geo", "-format", "msh2", "-o", "cylinder.msh"
         ], cwd=cwd, check=True, capture_output=True)
         _check_mesh_quality_gmsh(case_name, os.path.join(cwd, "cylinder.msh"), float(params["mesh"]))
-    elif params.get("mesher", "gmsh") == "gmsh":
+    elif mesher == "gmsh":
         print("  ❌ gmsh not found in PATH. Cannot generate mesh.")
 
     # Parallel Setup (Inject numberOfSubdomains)
@@ -1167,6 +1194,7 @@ PARAM_LABELS = {
     "H": "Height (m)",
     "D": "Diameter (m)",
     "mesh": "Mesh Size (m)",
+    "near_wall_refine_level": "Wall Refine Level (R)",
     "mesher": "Mesher",
     "geo": "Geometry",
     "tilt_deg": "Tilt Angle (deg)",
@@ -1204,6 +1232,11 @@ def _load_build_values_from_case(case_dir):
     mesher = str(values.get("mesher", DEFAULTS["mesher"])).lower()
     values["geo"] = geo if geo in GEO_OPTIONS else DEFAULTS["geo"]
     values["mesher"] = mesher if mesher in MESHER_OPTIONS else DEFAULTS["mesher"]
+    try:
+        near_wall_refine_level = int(float(values.get("near_wall_refine_level", DEFAULTS["near_wall_refine_level"])))
+    except (TypeError, ValueError):
+        near_wall_refine_level = int(DEFAULTS["near_wall_refine_level"])
+    values["near_wall_refine_level"] = max(0, near_wall_refine_level)
     return values
 
 def menu_build_cases(is_oscar):
@@ -1321,6 +1354,13 @@ def menu_build_cases(is_oscar):
         val_str = input(f"  Enter value(s) for '{label}' (single or sweep, e.g., 0.1 or 0.1:0.05:0.2): ").strip()
         try:
             vals = parse_range(val_str)
+            if param == "near_wall_refine_level":
+                coerced_vals = []
+                for v in vals:
+                    if abs(v - round(v)) > 1e-9:
+                        print(f"  ⚠️  '{v}' is not an integer; using {int(round(v))}.")
+                    coerced_vals.append(max(0, int(round(v))))
+                vals = coerced_vals
             if len(vals) == 1:
                 current_values[param] = vals[0]
                 if param in sweeps:
@@ -2983,11 +3023,19 @@ def _write_contact_angle_snapshot_outputs(
                 patch_artist=True,
                 showmeans=True,
                 meanline=False,
-                meanprops={
+                flierprops={
                     "marker": "o",
                     "markerfacecolor": "none",
+                    "markeredgecolor": "#222222",
+                    "markersize": 4.0,
+                    "linestyle": "none",
+                    "alpha": 0.9,
+                },
+                meanprops={
+                    "marker": "^",
+                    "markerfacecolor": "#2ca02c",
                     "markeredgecolor": "white",
-                    "markeredgewidth": 1.4,
+                    "markeredgewidth": 0.8,
                     "markersize": 6,
                 },
             )
@@ -3080,7 +3128,7 @@ def _write_contact_angle_snapshot_outputs(
                 markerfacecolor=phase_cmap(0.78),
                 markeredgecolor="none",
                 markersize=6,
-                label="points: color = phase",
+                label="phase colors",
             ),
             Line2D(
                 [0],
@@ -3088,10 +3136,10 @@ def _write_contact_angle_snapshot_outputs(
                 marker="o",
                 color="none",
                 markerfacecolor="none",
-                markeredgecolor="white",
-                markeredgewidth=1.4,
-                markersize=6,
-                label="white hollow circle: boxplot mean (each source)",
+                markeredgecolor="#222222",
+                markeredgewidth=1.0,
+                markersize=5,
+                label="○ outliers",
             ),
         ]
         ax2.legend(handles=legend_handles, loc="best", fontsize=legend_fs)

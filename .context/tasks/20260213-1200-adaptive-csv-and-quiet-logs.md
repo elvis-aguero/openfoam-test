@@ -149,3 +149,21 @@ When running built cases, emit a CSV with timestamp, normU, maxDeltaAlpha, inter
 - 2026-02-17: Clarified right-panel legend wording (`white hollow circle: boxplot mean (each source)`) and reran retroactive extract for target set.
 - 2026-02-17: Submitted Slurm extract jobs 400972-400981 for 10 targets (9x T0.0 + `case_H0.0082_D0.0083_flat_tilt_T10.0_m0.0002`) after legend clarification.
 - 2026-02-17: Snapshot PNGs regenerated for 9/10 targets with updated timestamps (~10:46 local); `case_H0.0083_D0.0083_flat_tilt_T0.0_m0.0008` remains impossible due missing mesh in `.foam`.
+- 2026-02-17: Simplified right-panel legend labels per user feedback: `phase colors` and symbol-based `○ outliers`; removed explanatory phrasing.
+- 2026-02-17: Added build-stage near-wall refinement control in `main.py` with new default `near_wall_refine_level=0` (no extra wall refinement).
+- 2026-02-17: Updated build menu labels/input handling for `near_wall_refine_level`; values are coerced to non-negative integers (with rounding warning for non-integer input).
+- 2026-02-17: Wired `near_wall_refine_level` through mesh generation calls (`setup_case` + Gmsh preflight invocation), with explicit warning when nonzero level is used with `gmsh` (snappy-only setting).
+- 2026-02-17: Extended `circularTiltingTank/generate_mesh.py` CLI with optional `[NearWallRefineLevel>=0]` arg and threaded it into snappy dict generation.
+- 2026-02-17: `system/snappyHexMeshDict` wall refinement now uses `walls level (N N)` from the new setting, instead of fixed `(1 1)`.
+- 2026-02-17: Validation passed: `python3 -m py_compile main.py circularTiltingTank/generate_mesh.py` plus smoke checks confirming `walls level (0 0)` for level 0 and `(2 2)` for level 2.
+- 2026-02-17: Updated snappy transition smoothing in `circularTiltingTank/generate_mesh.py` by setting `nCellsBetweenLevels` from `2` to `5`.
+- 2026-02-17: Increased snappy transition smoothing to `nCellsBetweenLevels 10` in `circularTiltingTank/generate_mesh.py` (from 5).
+- 2026-02-17: Dry-run validation using `sloshing` venv mesh generator confirmed `nCellsBetweenLevels 10` and wall region refinement level wiring (`walls level (2 2)` when near-wall level is 2).
+- 2026-02-17: Updated case naming in `main.py` to include near-wall refinement token `_R<level>` in `get_case_name` (e.g., `..._m0.0002_R2`).
+- 2026-02-17: Updated `parse_case_params` regex for backward compatibility: parses both legacy names without `_R` and new names with `_R`, defaulting to `near_wall_refine_level=0` when absent.
+- 2026-02-17: Syntax validation passed after naming update (`python3 -m py_compile main.py`).
+- 2026-02-17: Shortened build-menu label for `near_wall_refine_level` to concise text: `Wall Refine Level (R)`.
+- 2026-02-17: Verified user-submitted run health for `case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0003_R3` (job `401468`): running on compute node `node1935`, mesh/decompose/adaptive-stop startup completed without fatal errors, adaptive CSV/logs being written.
+- 2026-02-17: Early runtime check indicates very small adaptive timestep (`~1.2e-05` to `1.7e-05` around `t~4.8e-4`), implying risk that target `duration=10s` may not finish within current Slurm walltime (`24:00:00`).
+- 2026-02-17: Per user request, changed snappy transition smoothing `nCellsBetweenLevels` from `10` back to `5` in `circularTiltingTank/generate_mesh.py`.
+- 2026-02-18: Re-synced with `.context/` (PROTOCOL, KB, TASK_INDEX, INBOX, and task notes) at user request before continuing work.

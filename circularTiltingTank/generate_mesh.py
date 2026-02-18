@@ -302,9 +302,13 @@ writeFeatureEdgeMesh yes;
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
 
-def _write_snappy_hex_mesh_dict(path, H, geo_type="flat"):
+def _write_snappy_hex_mesh_dict(path, H, geo_type="flat", near_wall_refine_level=0):
     zmin_base = 0.0 if geo_type == "flat" else -0.5 * H
     location_in_mesh = (0.0, 0.0, max(zmin_base + 0.1 * H, 0.25 * H))
+    try:
+        wall_level = max(0, int(float(near_wall_refine_level)))
+    except (TypeError, ValueError):
+        wall_level = 0
     content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
   =========                 |
   \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
@@ -345,7 +349,7 @@ castellatedMeshControls
     maxLocalCells       2000000;
     maxGlobalCells      20000000;
     minRefinementCells  0;
-    nCellsBetweenLevels 2;
+    nCellsBetweenLevels 5;
     allowFreeStandingZoneFaces true;
 
     features
@@ -365,7 +369,7 @@ castellatedMeshControls
             {{
                 walls
                 {{
-                    level (1 1);
+                    level ({wall_level} {wall_level});
                     patchInfo {{ type wall; }}
                 }}
                 atmosphere
@@ -465,7 +469,10 @@ actions
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
-        print("Usage: python3 generate_mesh.py <Height> <Diameter> <MeshSize> [GeometryType: flat/cap] [Mesher: gmsh/snappy]")
+        print(
+            "Usage: python3 generate_mesh.py <Height> <Diameter> <MeshSize> "
+            "[GeometryType: flat/cap] [Mesher: gmsh/snappy] [NearWallRefineLevel>=0]"
+        )
         sys.exit(1)
 
     H = float(sys.argv[1])
@@ -480,6 +487,13 @@ if __name__ == "__main__":
     if len(sys.argv) >= 6:
         mesher = sys.argv[5].strip().lower()
 
+    near_wall_refine_level = 0
+    if len(sys.argv) >= 7:
+        try:
+            near_wall_refine_level = max(0, int(float(sys.argv[6])))
+        except (TypeError, ValueError):
+            near_wall_refine_level = 0
+
     if mesher == "snappy":
         tri_dir = os.path.join("constant", "triSurface")
         os.makedirs(tri_dir, exist_ok=True)
@@ -487,7 +501,12 @@ if __name__ == "__main__":
         _generate_cylinder_stl(H, D, lc, stl_path, geo_type=geo_type)
         _write_block_mesh_dict(os.path.join("system", "blockMeshDict"), H, D, lc, geo_type=geo_type)
         _write_surface_features_dict(os.path.join("system", "surfaceFeaturesDict"))
-        _write_snappy_hex_mesh_dict(os.path.join("system", "snappyHexMeshDict"), H, geo_type=geo_type)
+        _write_snappy_hex_mesh_dict(
+            os.path.join("system", "snappyHexMeshDict"),
+            H,
+            geo_type=geo_type,
+            near_wall_refine_level=near_wall_refine_level,
+        )
         _write_topo_set_dict(os.path.join("system", "topoSetDict"), H, D, lc, geo_type=geo_type)
         print(f"Generated snappyHexMesh inputs at {stl_path}.")
         sys.exit(0)

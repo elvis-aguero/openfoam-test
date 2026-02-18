@@ -232,3 +232,24 @@ Python: $(which python)
   ✅ Saved contact-angle diagnostics (CSV + quality report + snapshot figure).
   ✅ Extraction complete.
 /usr/bin/xvfb-run: line 186: kill: (1264029) - No such process
+## SLURM PROLOG ###############################################################
+##    Job ID : 401011
+##  Job Name : post_extract_case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0002
+##  Nodelist : node2333
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Tue Feb 17 10:57:56 EST 2026
+###############################################################################
+------------------------------------------------------------
+Action: extract | Case: case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0002 | vtp_mode: none | quality_profile: balanced
+Date: $(date)
+Python: $(which python)
+  📊 Extracting interface for . using PyVista (vtp_mode=none, quality_profile=balanced)...
+  Processing 51 timesteps (R=0.00415)...
+    Processed 20/51
+    Processed 40/51
+  ✅ Saved contact-angle diagnostics (CSV + quality report + snapshot figure).
+  ✅ Extraction complete.
+End: $(date)
+------------------------------------------------------------

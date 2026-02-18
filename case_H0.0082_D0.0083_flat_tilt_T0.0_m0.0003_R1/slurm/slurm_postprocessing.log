@@ -1,0 +1,28 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 409624
+##  Job Name : post_extract_case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0003_R1
+##  Nodelist : node2335
+##      CPUs : 1
+##  Mem/Node : 8192 MB
+## Directory : /oscar/data/dharri15/eaguerov/examples/openfoam/openfoam-test
+##   Job Started : Wed Feb 18 01:45:00 PM EST 2026
+###############################################################################
+
+The following have been reloaded with a version change:
+  1) python/3.11.11-5e66 => python/3.13.5-dz6t
+
+------------------------------------------------------------
+Action: extract | Case: case_H0.0082_D0.0083_flat_tilt_T0.0_m0.0003_R1 | vtp_mode: none | quality_profile: balanced
+Date: $(date)
+Python: $(which python)
+  📊 Extracting interface for . using PyVista (vtp_mode=none, quality_profile=balanced)...
+  Processing 101 timesteps (R=0.00415)...
+    Processed 20/101
+    Processed 40/101
+    Processed 60/101
+    Processed 80/101
+    Processed 100/101
+  ✅ Saved contact-angle diagnostics (CSV + quality report + snapshot figure).
+  ✅ Extraction complete.
+End: $(date)
+------------------------------------------------------------
