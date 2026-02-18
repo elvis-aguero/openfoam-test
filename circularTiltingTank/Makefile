@@ -83,6 +83,8 @@ endif
 OF_PREFIX ?= 
 N_CPUS ?= 1
 ADAPTIVE_STOP ?= 1
+VENV_PY ?= ../sloshing/bin/python
+ADAPTIVE_PY ?= $(VENV_PY)
 run: mesh
 	# commands to be run in OpenFOAM environment
 	$(OF_PREFIX) setFields
@@ -90,7 +92,11 @@ run: mesh
 		echo "Running in parallel on $(N_CPUS) cores..."; \
 		$(OF_PREFIX) decomposePar -force; \
 		if [ $(ADAPTIVE_STOP) -eq 1 ]; then \
-			$(OF_PREFIX) python3 adaptive_stop.py --parallel --np $(N_CPUS); \
+			if [ ! -x "$(ADAPTIVE_PY)" ]; then \
+				echo "ERROR: adaptive_stop requires venv python at $(ADAPTIVE_PY). Bootstrap the repo venv first (run main.py once)."; \
+				exit 1; \
+			fi; \
+			$(ADAPTIVE_PY) adaptive_stop.py --parallel --np $(N_CPUS) --of-prefix "$(OF_PREFIX)"; \
 		else \
 			$(OF_PREFIX) mpirun -np $(N_CPUS) foamRun -parallel; \
 		fi; \
@@ -101,7 +107,11 @@ run: mesh
 	else \
 		echo "Running in serial..."; \
 		if [ $(ADAPTIVE_STOP) -eq 1 ]; then \
-			$(OF_PREFIX) python3 adaptive_stop.py; \
+			if [ ! -x "$(ADAPTIVE_PY)" ]; then \
+				echo "ERROR: adaptive_stop requires venv python at $(ADAPTIVE_PY). Bootstrap the repo venv first (run main.py once)."; \
+				exit 1; \
+			fi; \
+			$(ADAPTIVE_PY) adaptive_stop.py --of-prefix "$(OF_PREFIX)"; \
 		else \
 			$(OF_PREFIX) foamRun; \
 		fi; \
@@ -111,7 +121,11 @@ resume:
 	@if [ $(N_CPUS) -gt 1 ]; then \
 		echo "Resuming in parallel on $(N_CPUS) cores..."; \
 		if [ $(ADAPTIVE_STOP) -eq 1 ]; then \
-			$(OF_PREFIX) python3 adaptive_stop.py --parallel --np $(N_CPUS); \
+			if [ ! -x "$(ADAPTIVE_PY)" ]; then \
+				echo "ERROR: adaptive_stop requires venv python at $(ADAPTIVE_PY). Bootstrap the repo venv first (run main.py once)."; \
+				exit 1; \
+			fi; \
+			$(ADAPTIVE_PY) adaptive_stop.py --parallel --np $(N_CPUS) --of-prefix "$(OF_PREFIX)"; \
 		else \
 			$(OF_PREFIX) mpirun -np $(N_CPUS) foamRun -parallel; \
 		fi; \
@@ -122,7 +136,11 @@ resume:
 	else \
 		echo "Resuming in serial..."; \
 		if [ $(ADAPTIVE_STOP) -eq 1 ]; then \
-			$(OF_PREFIX) python3 adaptive_stop.py; \
+			if [ ! -x "$(ADAPTIVE_PY)" ]; then \
+				echo "ERROR: adaptive_stop requires venv python at $(ADAPTIVE_PY). Bootstrap the repo venv first (run main.py once)."; \
+				exit 1; \
+			fi; \
+			$(ADAPTIVE_PY) adaptive_stop.py --of-prefix "$(OF_PREFIX)"; \
 		else \
 			$(OF_PREFIX) foamRun; \
 		fi; \

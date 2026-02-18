@@ -17,3 +17,9 @@
 | 20260213-1400-t0-theta115-oscillation-diagnosis | Diagnose non-steady oscillations in T0.0 theta0=115 run | open | local | main | 2026-02-13 |
 
 | 20260218-1353-reconstruct-case-m0.0001-t0.0 | Reconstruct case m0.0001 T0.0 | done | local | main | 2026-02-18 |
+
+| 20260218-1542-convergence-plot-m0.0001-t0.0 | Generate convergence plot PNG for m0.0001 T0.0 case | done | local | main | 2026-02-18 |
+
+| 20260218-1547-convergence-plot-r1-r3 | Generate convergence plots for R1 and R3 | done | local | main | 2026-02-18 |
+
+| 20260218-1558-venv-adaptive-stop-migration | Migrate adaptive_stop Python execution to repo venv | done | local | main | 2026-02-18 |

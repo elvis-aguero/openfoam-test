@@ -5,6 +5,7 @@ import json
 import math
 import os
 import re
+import shlex
 import signal
 import subprocess
 import sys
@@ -357,6 +358,7 @@ def _write_convergence_summary_figure(csv_path, fig_path, case_dir=None):
     Returns True on success, False otherwise.
     """
     if not os.path.exists(csv_path):
+        print(f"Adaptive stop: convergence figure skipped, CSV not found: {csv_path}")
         return False
 
     try:
@@ -364,15 +366,18 @@ def _write_convergence_summary_figure(csv_path, fig_path, case_dir=None):
             reader = csv.DictReader(handle)
             fieldnames = reader.fieldnames or []
             rows = list(reader)
-    except Exception:
+    except Exception as exc:
+        print(f"Adaptive stop: convergence figure skipped, failed to read CSV ({exc}).")
         return False
 
     if not rows or not fieldnames:
+        print("Adaptive stop: convergence figure skipped, CSV has no data rows.")
         return False
 
     x_key = "timestamp" if "timestamp" in fieldnames else fieldnames[0]
     metric_keys = [k for k in fieldnames if k != x_key]
     if not metric_keys:
+        print("Adaptive stop: convergence figure skipped, CSV has no metric columns.")
         return False
 
     if case_dir is None:
@@ -393,7 +398,8 @@ def _write_convergence_summary_figure(csv_path, fig_path, case_dir=None):
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-    except Exception:
+    except Exception as exc:
+        print(f"Adaptive stop: convergence figure skipped, matplotlib unavailable ({exc}).")
         return False
 
     label_fs = 12
@@ -649,8 +655,13 @@ def format_time(value):
 
 def build_command(args):
     if args.parallel and args.np > 1:
-        return ["mpirun", "-np", str(args.np), "foamRun", "-parallel"]
-    return ["foamRun"]
+        base = ["mpirun", "-np", str(args.np), "foamRun", "-parallel"]
+    else:
+        base = ["foamRun"]
+    prefix = (args.of_prefix or "").strip()
+    if not prefix:
+        return base
+    return shlex.split(prefix) + base
 
 
 def main():
@@ -659,6 +670,12 @@ def main():
     )
     parser.add_argument("--parallel", action="store_true", help="Run foamRun in parallel.")
     parser.add_argument("--np", type=int, default=1, help="Number of MPI ranks.")
+    parser.add_argument(
+        "--of-prefix",
+        type=str,
+        default="",
+        help="Command prefix for OpenFOAM executables (e.g., 'of13').",
+    )
     args = parser.parse_args()
 
     config = load_adaptive_config(ADAPTIVE_DICT)
@@ -672,6 +689,8 @@ def main():
         return subprocess.run(cmd).returncode
 
     print("Adaptive stop enabled: watching norm(U)/numel(U) and interface stillness (alpha.water).")
+    print(f"Adaptive stop: python executable -> {sys.executable}")
+    print(f"Adaptive stop: solver command -> {' '.join(cmd)}")
     probe_points = _parse_probe_locations()
     still_h_ref = _read_still_interface_height()
     csv_enabled = bool(config.get("csvEnabled", True))
@@ -821,6 +840,8 @@ def main():
         fig_path = os.path.join(fig_dir, "convergence_summary.png")
         if _write_convergence_summary_figure(csv_path, fig_path):
             print(f"Adaptive stop: convergence figure -> {fig_path}")
+        else:
+            print(f"Adaptive stop: convergence figure skipped (CSV missing/empty or matplotlib unavailable).")
 
     return return_code
 

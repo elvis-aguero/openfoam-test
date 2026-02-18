@@ -39,6 +39,9 @@ When you select "Run Cases":
 4.  On **Oscar**: Jobs are submitted to Slurm with smart resource allocation.
 5.  **Locally**: If OpenFOAM is installed, simulations run sequentially.
 6.  **Adaptive stop**: Runs stop early once the interface is steady (max velocity stays below a threshold for a window). Tune in `case_*/system/adaptiveStopDict` if needed.
+7.  **Python environment split**:
+    - Adaptive-stop Python (`adaptive_stop.py`, CSV, convergence PNG) runs in the repo venv (`sloshing`).
+    - OpenFOAM binaries (`foamRun`, `decomposePar`, `reconstructPar`) still run via the OpenFOAM environment/wrapper (e.g., `of13` on Oscar).
 
 ---
 

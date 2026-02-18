@@ -59,6 +59,9 @@ The build menu starts the Gmsh mesh-quality preflight in a background thread. It
 ### 10. Persist Build Parameters (case_params.json)
 Case parameters are now written at build time to `case_params.json`. Run-time logic should read this file instead of inferring from the folder name, to avoid overwriting user-chosen `endTime` or other settings.
 
+### 11. Python Runtime for Adaptive Stop Must Be Repo Venv
+`adaptive_stop.py` should run with the repo venv Python (`sloshing`) so CSV and convergence plotting dependencies (notably `matplotlib`) match `main.py`. Keep OpenFOAM commands (`foamRun`, `decomposePar`, `reconstructPar`) in the OpenFOAM environment (e.g., `of13` on Oscar) by passing an OpenFOAM command prefix into the adaptive-stop solver launcher.
+
 ## 🏃 Current Workflow
 
 **Interactive Manager** (`python3 main.py`):
